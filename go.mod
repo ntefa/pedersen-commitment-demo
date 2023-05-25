@@ -1,4 +1,4 @@
-module github.com/threehook/go-pedersen-commitment
+module pedersen-commitment-transfer
 
 go 1.14
 

@@ -14,14 +14,11 @@ func CommitToSuccess(t *testing.T) {
 
 	var rX, rY, vX, vY ristretto.Scalar
 	rX.Rand()
-	fmt.Println("rX (first private key) is ", rX)
 	H := GenerateH() // Secondary point on the Curve
-	fmt.Println("H is ", H)
 	five := big.NewInt(5)
 
 	// Transfer amount of 5 tokens
 	tC := CommitTo(&H, &rX, vX.SetBigInt(five)) //5 encrypted tokens
-	fmt.Println("tC is ", tC)
 	// Alice 10 - 5 = 5
 	rY.Rand()
 	fmt.Println("rY (second private key) is ", rY)
