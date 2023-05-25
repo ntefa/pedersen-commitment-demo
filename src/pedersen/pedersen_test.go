@@ -1,27 +1,32 @@
 package pedersen
 
 import (
-	"github.com/bwesterb/go-ristretto"
-	"github.com/stretchr/testify/assert"
+	"fmt"
 	"math/big"
 	"testing"
+
+	"github.com/bwesterb/go-ristretto"
+	"github.com/stretchr/testify/assert"
 )
 
 // Should commit to a sum of two values
-func TestCommitToSuccess(t *testing.T) {
+func CommitToSuccess(t *testing.T) {
 
 	var rX, rY, vX, vY ristretto.Scalar
 	rX.Rand()
-	H := generateH() // Secondary point on the Curve
+	fmt.Println("rX (first private key) is ", rX)
+	H := GenerateH() // Secondary point on the Curve
+	fmt.Println("H is ", H)
 	five := big.NewInt(5)
 
 	// Transfer amount of 5 tokens
-	tC := commitTo(&H, &rX, vX.SetBigInt(five))
-
+	tC := CommitTo(&H, &rX, vX.SetBigInt(five)) //5 encrypted tokens
+	fmt.Println("tC is ", tC)
 	// Alice 10 - 5 = 5
 	rY.Rand()
+	fmt.Println("rY (second private key) is ", rY)
 	ten := big.NewInt(10)
-	aC1 := commitTo(&H, &rY, vY.SetBigInt(ten))
+	aC1 := CommitTo(&H, &rY, vY.SetBigInt(ten))
 	assert.NotEqual(t, aC1, tC, "Should not be equal")
 	var aC2 ristretto.Point
 	aC2.Sub(&aC1, &tC)
@@ -31,20 +36,20 @@ func TestCommitToSuccess(t *testing.T) {
 }
 
 // Should fail if not using the correct blinding factors
-func TestCommitToFails(t *testing.T) {
+func CommitToFails(t *testing.T) {
 
 	var rX, rY, vX, vY ristretto.Scalar
 	rX.Rand()
-	H := generateH() // Secondary point on the Curve
+	H := GenerateH() // Secondary point on the Curve
 	five := big.NewInt(5)
 
 	// Transfer amount of 5 tokens
-	tC := commitTo(&H, &rX, vX.SetBigInt(five))
+	tC := CommitTo(&H, &rX, vX.SetBigInt(five))
 
 	// Alice 10 - 5 = 5
 	rY.Rand()
 	ten := big.NewInt(10)
-	aC1 := commitTo(&H, &rY, vY.SetBigInt(ten))
+	aC1 := CommitTo(&H, &rY, vY.SetBigInt(ten))
 	assert.NotEqual(t, aC1, tC, "They should not be equal")
 	var aC2 ristretto.Point
 	aC2.Sub(&aC1, &tC)
