@@ -33,7 +33,7 @@ func TestCommittedTransaction(t *testing.T) {
 		account := b.CreateAccount(testCase.initialBalance)
 		//Assign to the specific address the account
 		b.SetAccount(testCase.address, account)
-		initialBalanceCommitted := b.AddressList[testCase.address].CommittedBalance
+		initialBalanceCommitted := b.AddressList[testCase.address].GetBalance()
 
 		//Trigger transcacton. Subtract committed account from initial committed balance
 		committedAmount_afterTransaction := b.EncryptedTransaction(testCase.amountSent, testCase.address)

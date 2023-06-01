@@ -22,7 +22,7 @@ func (b *Blockchain) CreateAccount(balance int64) *Account {
 	//committed amount
 	tX := pedersen.CommitTo(&b.H, &b.BindingFactor, vX.SetBigInt(big.NewInt(balance)))
 	var account Account
-	account.CommittedBalance = tX
+	account.committedBalance = tX
 
 	return &account
 }
@@ -40,10 +40,10 @@ func (b *Blockchain) EncryptedTransaction(transactionAmount int64, senderAddress
 	amount := big.NewInt(transactionAmount)
 
 	committedAmount := pedersen.CommitTo(&b.H, &b.BindingFactor, vX.SetBigInt(amount))
-	fmt.Println("balance before sub", senderAccount.CommittedBalance)
-	senderAccount.CommittedBalance.Sub(&senderAccount.CommittedBalance, &committedAmount)
-	fmt.Println("balance after sub", senderAccount.CommittedBalance)
-	return senderAccount.CommittedBalance
+	fmt.Println("balance before sub", senderAccount.committedBalance)
+	senderAccount.committedBalance.Sub(&senderAccount.committedBalance, &committedAmount)
+	fmt.Println("balance after sub", senderAccount.committedBalance)
+	return senderAccount.committedBalance
 	//add money to recipient account
 	//H := generateH()
 
@@ -61,7 +61,11 @@ func (b *Blockchain) isValidEncryption(x int64, committedAmount ristretto.Point)
 	return nil
 }
 
-func (b *Blockchain) GetCommittedBalance(address string) ristretto.Point {
+func (b *Blockchain) GetCommittedBalanceByAddress(address string) ristretto.Point {
 	account := b.AddressList[address]
-	return account.CommittedBalance
+	return account.GetBalance()
+}
+
+func (account *Account) GetBalance() ristretto.Point {
+	return account.committedBalance
 }
