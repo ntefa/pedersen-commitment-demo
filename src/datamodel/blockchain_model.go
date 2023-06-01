@@ -13,7 +13,7 @@ type Blockchain struct {
 }
 
 type Account struct {
-	CommittedBalance ristretto.Point
+	committedBalance ristretto.Point
 }
 
 // H is a constant value for the blockchain. It needs to be setup. If H varies the state of the blockchain is not consistent.

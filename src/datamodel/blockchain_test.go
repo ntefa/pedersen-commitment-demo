@@ -33,8 +33,8 @@ func TestCreateAccount(t *testing.T) {
 	account := b.CreateAccount(balance)
 
 	// Verify the output
-	if account.CommittedBalance != expectedCommittedBalance {
-		t.Errorf("Unexpected committedBalance value. Got: %v, Expected: %v", account.CommittedBalance, expectedCommittedBalance)
+	if account.committedBalance != expectedCommittedBalance {
+		t.Errorf("Unexpected committedBalance value. Got: %v, Expected: %v", account.committedBalance, expectedCommittedBalance)
 	}
 }
 
