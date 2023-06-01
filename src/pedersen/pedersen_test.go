@@ -1,7 +1,6 @@
 package pedersen
 
 import (
-	"fmt"
 	"math/big"
 	"testing"
 
@@ -9,51 +8,89 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Should commit to a sum of two values
-func CommitToSuccess(t *testing.T) {
-
-	var rX, rY, vX, vY ristretto.Scalar
-	rX.Rand()
-	H := GenerateH() // Secondary point on the Curve
-	five := big.NewInt(5)
-
-	// Transfer amount of 5 tokens
-	tC := CommitTo(&H, &rX, vX.SetBigInt(five)) //5 encrypted tokens
-	// Alice 10 - 5 = 5
-	rY.Rand()
-	fmt.Println("rY (second private key) is ", rY)
-	ten := big.NewInt(10)
-	aC1 := CommitTo(&H, &rY, vY.SetBigInt(ten))
-	assert.NotEqual(t, aC1, tC, "Should not be equal")
-	var aC2 ristretto.Point
-	aC2.Sub(&aC1, &tC)
-
-	checkAC2 := SubPrivately(&H, &rX, &rY, ten, five)
-	assert.True(t, checkAC2.Equals(&aC2), "Should be equal")
+var _TestCommittedValues = []struct {
+	name    string
+	H       ristretto.Point
+	amount1 int64
+	amount2 int64
+	isError bool
+}{
+	{
+		name:    "Ok",
+		isError: false,
+		amount1: 10,
+		amount2: 5,
+	},
+	{
+		name:    "Different H",
+		H:       GenerateH(),
+		amount1: 10,
+		amount2: 5,
+		isError: true,
+	},
 }
 
-// Should fail if not using the correct blinding factors
-func CommitToFails(t *testing.T) {
+// Should commit to a sum of two values
+func TestAddCommittedValues(t *testing.T) {
 
-	var rX, rY, vX, vY ristretto.Scalar
-	rX.Rand()
-	H := GenerateH() // Secondary point on the Curve
-	five := big.NewInt(5)
+	for _, testcase := range _TestCommittedValues {
+		var rX, rY, vX, vY ristretto.Scalar
+		rX.Rand()
+		H1 := GenerateH() // Secondary point on the Curve
+		var H2 ristretto.Point
 
-	// Transfer amount of 5 tokens
-	tC := CommitTo(&H, &rX, vX.SetBigInt(five))
+		amount2 := big.NewInt(testcase.amount2)
 
-	// Alice 10 - 5 = 5
-	rY.Rand()
-	ten := big.NewInt(10)
-	aC1 := CommitTo(&H, &rY, vY.SetBigInt(ten))
-	assert.NotEqual(t, aC1, tC, "They should not be equal")
-	var aC2 ristretto.Point
-	aC2.Sub(&aC1, &tC)
+		// Transfer amount of 5 tokens
+		amount2Committed := CommitTo(&H1, &rX, vX.SetBigInt(amount2)) //5 encrypted tokens
+		// Alice 10 - 5 = 5
+		rY.Rand()
+		amount1 := big.NewInt(testcase.amount1)
+		amount1Committed := CommitTo(&H1, &rY, vY.SetBigInt(amount1))
+		assert.NotEqual(t, amount1Committed, amount2Committed, "Should not be equal")
+		var sumCommitted ristretto.Point
+		sumCommitted.Add(&amount1Committed, &amount2Committed)
 
-	// Create different (and wrong) binding factors
-	rX.Rand()
-	rY.Rand()
-	checkAC2 := SubPrivately(&H, &rX, &rY, ten, five)
-	assert.False(t, checkAC2.Equals(&aC2), "Should not be equal")
+		if testcase.isError {
+			H2 = testcase.H
+			checksumCommitted := AddPrivately(&H2, &rX, &rY, amount1, amount2)
+			assert.False(t, checksumCommitted.Equals(&sumCommitted), "Should not be equal")
+		} else {
+			H2 = H1
+			checksumCommitted := AddPrivately(&H2, &rX, &rY, amount1, amount2)
+			assert.True(t, checksumCommitted.Equals(&sumCommitted), "Should be equal")
+		}
+	}
+}
+
+func TestSubCommittedValues(t *testing.T) {
+
+	for _, testcase := range _TestCommittedValues {
+		var rX, rY, vX, vY ristretto.Scalar
+		rX.Rand()
+		H1 := GenerateH() // Secondary point on the Curve
+		var H2 ristretto.Point
+
+		amount2 := big.NewInt(testcase.amount2)
+
+		// Transfer amount of 5 tokens
+		amount2Committed := CommitTo(&H1, &rX, vX.SetBigInt(amount2)) //5 encrypted tokens
+		// Alice 10 - 5 = 5
+		rY.Rand()
+		amount1 := big.NewInt(testcase.amount1)
+		amount1Committed := CommitTo(&H1, &rY, vY.SetBigInt(amount1))
+		assert.NotEqual(t, amount1Committed, amount2Committed, "Should not be equal")
+		var sumCommitted ristretto.Point
+		sumCommitted.Sub(&amount1Committed, &amount2Committed)
+
+		if testcase.isError {
+			H2 = testcase.H
+			checksumCommitted := SubPrivately(&H2, &rX, &rY, amount1, amount2)
+			assert.False(t, checksumCommitted.Equals(&sumCommitted), "Should not be equal")
+		} else {
+			H2 = H1
+			checksumCommitted := SubPrivately(&H2, &rX, &rY, amount1, amount2)
+			assert.True(t, checksumCommitted.Equals(&sumCommitted), "Should be equal")
+		}
+	}
 }
