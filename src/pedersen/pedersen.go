@@ -59,3 +59,32 @@ func SubPrivately(H *ristretto.Point, rX, rY *ristretto.Scalar, vX, vY *big.Int)
 	result.Add(&rPoint, &vPoint)
 	return result
 }
+
+// Add two commitments using homomorphic encryption
+func Add(cX, cY *ristretto.Point) ristretto.Point {
+	var subPoint ristretto.Point
+	subPoint.Add(cX, cY)
+	return subPoint
+}
+
+// Add two known values with blinding factors
+//   and compute the committed value
+//   add rX + rY (blinding factor private keys)
+//   add vX + vY (hidden values)
+func AddPrivately(H *ristretto.Point, rX, rY *ristretto.Scalar, vX, vY *big.Int) ristretto.Point {
+	var rDif ristretto.Scalar
+	var vDif big.Int
+	rDif.Add(rY, rX)
+	vDif.Add(vX, vY)
+	vDif.Mod(&vDif, n25519)
+
+	var vScalar ristretto.Scalar
+	var rPoint ristretto.Point
+	vScalar.SetBigInt(&vDif)
+
+	rPoint.ScalarMultBase(&rDif)
+	var vPoint, result ristretto.Point
+	vPoint.ScalarMult(H, &vScalar)
+	result.Add(&rPoint, &vPoint)
+	return result
+}
