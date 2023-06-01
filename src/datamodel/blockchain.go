@@ -49,13 +49,13 @@ func (b *Blockchain) EncryptedTransaction(transactionAmount int64, senderAddress
 
 }
 
-func (b *Blockchain) isValidEncryption(x int64, eX ristretto.Point) error {
+func (b *Blockchain) isValidEncryption(x int64, committedAmount ristretto.Point) error {
 	var vX ristretto.Scalar
 	value := big.NewInt(x)
 
 	committedValue := pedersen.CommitTo(&b.H, &b.BindingFactor, vX.SetBigInt(value))
 
-	if eX != committedValue {
+	if committedAmount != committedValue {
 		return fmt.Errorf("encryption not valid")
 	}
 	return nil
