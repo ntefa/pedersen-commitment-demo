@@ -8,19 +8,19 @@ import (
 
 type Blockchain struct {
 	AddressList   map[string]*Account
-	h             ristretto.Point
-	bindingFactor ristretto.Scalar
+	H             ristretto.Point
+	BindingFactor ristretto.Scalar
 }
 
 type Account struct {
-	committedBalance ristretto.Point
+	CommittedBalance ristretto.Point
 }
 
 // H is a constant value for the blockchain. It needs to be setup. If H varies the state of the blockchain is not consistent.
 func (b *Blockchain) setH() {
-	b.h = pedersen.GenerateH()
+	b.H = pedersen.GenerateH()
 }
 
 func (b *Blockchain) setBindingFactor() {
-	b.bindingFactor.Rand()
+	b.BindingFactor.Rand()
 }
