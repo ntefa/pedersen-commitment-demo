@@ -21,6 +21,7 @@ func (b *Blockchain) setH() {
 	b.H = pedersen.GenerateH()
 }
 
+//Should they be public? How can the smart contract validate the encryption if bindingFactor not public?
 func (b *Blockchain) setBindingFactor() {
 	b.BindingFactor.Rand()
 }

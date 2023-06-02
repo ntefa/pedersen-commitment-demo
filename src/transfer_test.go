@@ -10,14 +10,18 @@ import (
 )
 
 var _TestTransfer = []struct {
-	address        string
-	initialBalance int64
-	amountSent     int64
+	senderAddress           string
+	recipientAddress        string
+	senderInitialBalance    int64
+	recipientInitialBalance int64
+	amountSent              int64
 }{
 	{
-		address:        "0x111",
-		initialBalance: 10,
-		amountSent:     5,
+		senderAddress:           "0x111",
+		recipientAddress:        "0x999",
+		senderInitialBalance:    10,
+		recipientInitialBalance: 20,
+		amountSent:              5,
 	},
 }
 
@@ -30,20 +34,30 @@ func TestCommittedTransaction(t *testing.T) {
 	for _, testCase := range _TestTransfer {
 
 		//Create an account with an initial committed balance
-		account := b.CreateAccount(testCase.initialBalance)
+		senderAccount := b.CreateAccount(testCase.senderInitialBalance)
+		recipientAccount := b.CreateAccount(testCase.recipientInitialBalance)
+
 		//Assign to the specific address the account
-		b.SetAccount(testCase.address, account)
-		initialBalanceCommitted := b.AddressList[testCase.address].GetBalance()
+		b.SetAccount(testCase.senderAddress, senderAccount)
+		b.SetAccount(testCase.recipientAddress, recipientAccount)
+
+		senderInitialBalanceCommitted := b.AddressList[testCase.senderAddress].GetBalance()
+		recipientInitialBalanceCommitted := b.AddressList[testCase.recipientAddress].GetBalance()
 
 		//Trigger transcacton. Subtract committed account from initial committed balance
-		committedAmount_afterTransaction := b.EncryptedTransaction(testCase.amountSent, testCase.address)
+		senderCommittedAmount_afterTransaction, recipientCommittedAmount_afterTransaction := b.EncryptedTransaction(testCase.amountSent, testCase.senderAddress, testCase.recipientAddress)
 
 		//Assert change of state in the balance
-		assert.NotEqual(t, initialBalanceCommitted, committedAmount_afterTransaction, "Should not be equal")
+		assert.NotEqual(t, senderInitialBalanceCommitted, senderCommittedAmount_afterTransaction, "Should not be equal")
+		assert.NotEqual(t, recipientInitialBalanceCommitted, recipientCommittedAmount_afterTransaction, "Should not be equal")
 
 		amountSent := big.NewInt(testCase.amountSent)
-		initialBalance := big.NewInt(testCase.initialBalance)
-		checkAmountCommitted := pedersen.SubPrivately(&b.H, &b.BindingFactor, &b.BindingFactor, initialBalance, amountSent)
-		assert.True(t, checkAmountCommitted.Equals(&committedAmount_afterTransaction), "Should be equal")
+		senderInitialBalance := big.NewInt(testCase.senderInitialBalance)
+		recipientInitialBalance := big.NewInt(testCase.recipientInitialBalance)
+
+		checkAmountCommitted := pedersen.SubPrivately(&b.H, &b.BindingFactor, &b.BindingFactor, senderInitialBalance, amountSent)
+		assert.True(t, checkAmountCommitted.Equals(&senderCommittedAmount_afterTransaction), "Should be equal")
+		checkAmountCommitted = pedersen.AddPrivately(&b.H, &b.BindingFactor, &b.BindingFactor, recipientInitialBalance, amountSent)
+		assert.True(t, checkAmountCommitted.Equals(&recipientCommittedAmount_afterTransaction), "Should be equal")
 	}
 }

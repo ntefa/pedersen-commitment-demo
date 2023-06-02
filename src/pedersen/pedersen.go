@@ -88,3 +88,17 @@ func AddPrivately(H *ristretto.Point, rX, rY *ristretto.Scalar, vX, vY *big.Int)
 	result.Add(&rPoint, &vPoint)
 	return result
 }
+
+func Validate(x int64, committedAmount ristretto.Point, H ristretto.Point, rX ristretto.Scalar) bool {
+	var vX ristretto.Scalar
+	value := big.NewInt(x)
+
+	committedValue := CommitTo(&H, &rX, vX.SetBigInt(value))
+
+	if committedAmount == committedValue {
+		return true
+	} else {
+		return false
+	}
+
+}

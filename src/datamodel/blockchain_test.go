@@ -47,7 +47,7 @@ func TestIsValidEncryption(t *testing.T) {
 	wrongCommittedAmount := pedersen.CommitTo(&testCase.wrongH, &b.BindingFactor, vX.SetBigInt(big.NewInt(testCase.amount)))
 
 	// Call the function being tested
-	err := b.isValidEncryption(testCase.amount, wrongCommittedAmount)
+	err := b.isValidEncryption(testCase.amount, &wrongCommittedAmount)
 
 	// Verify the output
 	if err.Error() != testCase.errorString {

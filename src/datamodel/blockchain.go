@@ -33,29 +33,28 @@ func (b *Blockchain) SetAccount(address string, account *Account) error {
 }
 
 //TODO decide whether transactionAmount should be encrypted or not
-func (b *Blockchain) EncryptedTransaction(transactionAmount int64, senderAddress string) ristretto.Point {
+func (b *Blockchain) EncryptedTransaction(transactionAmount int64, senderAddress string, recipientAddress string) (ristretto.Point, ristretto.Point) {
 	var vX ristretto.Scalar
 	senderAccount := b.AddressList[senderAddress]
-	//recipientAccount := b.addressList[recipientAddress] //TODO: add committed value to recipient
+	recipientAccount := b.AddressList[recipientAddress] //TODO: add committed value to recipient
 	amount := big.NewInt(transactionAmount)
 
 	committedAmount := pedersen.CommitTo(&b.H, &b.BindingFactor, vX.SetBigInt(amount))
-	fmt.Println("balance before sub", senderAccount.committedBalance)
+	//avoid double spending
 	senderAccount.committedBalance.Sub(&senderAccount.committedBalance, &committedAmount)
-	fmt.Println("balance after sub", senderAccount.committedBalance)
-	return senderAccount.committedBalance
+	recipientAccount.committedBalance.Add(&recipientAccount.committedBalance, &committedAmount)
+
+	return senderAccount.committedBalance, recipientAccount.committedBalance
 	//add money to recipient account
-	//H := generateH()
 
 }
 
-func (b *Blockchain) isValidEncryption(x int64, committedAmount ristretto.Point) error {
-	var vX ristretto.Scalar
-	value := big.NewInt(x)
+func (b *Blockchain) isValidEncryption(x int64, committedAmount *ristretto.Point) error {
 
-	committedValue := pedersen.CommitTo(&b.H, &b.BindingFactor, vX.SetBigInt(value))
+	isValid := pedersen.Validate(x, *committedAmount, b.H, b.BindingFactor)
+	//committedValue := pedersen.CommitTo(&b.H, &b.BindingFactor, vX.SetBigInt(value))
 
-	if committedAmount != committedValue {
+	if !isValid {
 		return fmt.Errorf("encryption not valid")
 	}
 	return nil
