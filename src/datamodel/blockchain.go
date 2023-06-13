@@ -3,7 +3,6 @@ package datamodel
 import (
 	"fmt"
 	"math/big"
-
 	"pedersen-commitment-transfer/src/pedersen"
 
 	"github.com/bwesterb/go-ristretto"
@@ -32,7 +31,7 @@ func (b *Blockchain) SetAccount(address string, account *Account) error {
 	return nil
 }
 
-//TODO decide whether transactionAmount should be encrypted or not
+// TODO decide whether transactionAmount should be encrypted or not
 func (b *Blockchain) EncryptedTransaction(transactionAmount int64, senderAddress string, recipientAddress string) (ristretto.Point, ristretto.Point) {
 	var vX ristretto.Scalar
 	senderAccount := b.AddressList[senderAddress]

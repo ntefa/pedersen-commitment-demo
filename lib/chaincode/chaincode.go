@@ -601,9 +601,12 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 // param {String} name The name of the token
 // param {String} symbol The symbol of the token
 // param {String} decimals The decimals used for the token operations
-func (s *SmartContract) Initialize(ctx contractapi.TransactionContextInterface, name string, symbol string, decimals string) (bool, error) {
+func (s *SmartContract) Initialize(ctx contractapi.TransactionContextInterface, name string, symbol string, decimals string, H ristretto.Point, bindingFactor ristretto.Scalar) (bool, error) {
 
-	//TODO: integrate init pedersen here
+	err := s.InitPedersen(ctx, H, bindingFactor)
+	if err != nil {
+		return false, fmt.Errorf("failed to init Pedersen Params: %v", err)
+	}
 	// Check minter authorization - this sample assumes Org1 is the central banker with privilege to intitialize contract
 	clientMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {

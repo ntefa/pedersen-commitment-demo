@@ -6,7 +6,7 @@ package main
 
 import (
 	"log"
-	"pedersen-commitment-transfer/src/chaincode"
+	"pedersen-commitment-transfer/lib/chaincode"
 
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
