@@ -1,7 +1,6 @@
 package chaincode
 
 import (
-	"encoding/json"
 	"fmt"
 	"math/big"
 	"pedersen-commitment-transfer/src/pedersen"
@@ -25,14 +24,12 @@ type PedersenParams struct {
 
 func IsValidEncryption(ctx contractapi.TransactionContextInterface, x int64, committedAmount *ristretto.Point) error {
 
-	pedersenParams, err := GetPedersenParams(ctx)
+	H, bindingFactor, _, err := GetPedersenParams(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch pedersen encryption parameters: %v", err)
 	}
 
-	H := pedersenParams.H
-	bindingFactor := pedersenParams.BindingFactor
-	isValid := pedersen.Validate(x, *committedAmount, H, bindingFactor)
+	isValid := pedersen.Validate(x, *committedAmount, *H, *bindingFactor)
 
 	if !isValid {
 		return fmt.Errorf("encryption not valid")
@@ -41,7 +38,7 @@ func IsValidEncryption(ctx contractapi.TransactionContextInterface, x int64, com
 }
 
 // InitLedger adds a base set of assets to the ledger
-func (SmartContract) InitPedersen(ctx contractapi.TransactionContextInterface, H ristretto.Point, bindingFactor ristretto.Scalar) error {
+func InitPedersen(ctx contractapi.TransactionContextInterface, H ristretto.Point, bindingFactor ristretto.Scalar) error {
 
 	var vX ristretto.Scalar
 
@@ -82,21 +79,50 @@ func (SmartContract) InitPedersen(ctx contractapi.TransactionContextInterface, H
 	return nil
 }
 
-// // ReadAsset returns the asset stored in the world state with given id.
-func GetPedersenParams(ctx contractapi.TransactionContextInterface) (*PedersenParams, error) {
-	assetJSON, err := ctx.GetStub().GetState(PEDERSEN_H_ID)
+// ReadAsset returns the asset stored in the world state with given id.
+func GetPedersenParams(ctx contractapi.TransactionContextInterface) (*ristretto.Point, *ristretto.Scalar, *ristretto.Point, error) {
+
+	HJSON, err := ctx.GetStub().GetState(PEDERSEN_H_ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read from world state: %v", err)
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
 	}
-	if assetJSON == nil {
-		return nil, fmt.Errorf("the asset %s does not exist", PEDERSEN_H_ID)
+	if HJSON == nil {
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("the asset %s does not exist", PEDERSEN_H_ID)
 	}
 
-	var asset PedersenParams
-	err = json.Unmarshal(assetJSON, &asset)
+	BindingFactorJSON, err := ctx.GetStub().GetState(PEDERSEN_BINDING_ID)
 	if err != nil {
-		return nil, err
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if BindingFactorJSON == nil {
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("the asset %s does not exist", PEDERSEN_H_ID)
 	}
 
-	return &asset, nil
+	ZeroPedersenJSON, err := ctx.GetStub().GetState(PEDERSEN_ZERO_ID)
+	if err != nil {
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
+	}
+	if ZeroPedersenJSON == nil {
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("the asset %s does not exist", PEDERSEN_H_ID)
+	}
+
+	var H, zeroPedersen ristretto.Point
+	var bindingFactor ristretto.Scalar
+
+	err = H.UnmarshalBinary(HJSON)
+	if err != nil {
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal asset")
+	}
+
+	err = bindingFactor.UnmarshalBinary(BindingFactorJSON)
+	if err != nil {
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal asset")
+	}
+
+	err = zeroPedersen.UnmarshalBinary(ZeroPedersenJSON)
+	if err != nil {
+		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal asset")
+	}
+
+	return &H, &bindingFactor, &zeroPedersen, nil
 }

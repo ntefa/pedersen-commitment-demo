@@ -33,7 +33,6 @@ var _TestPedersen = struct {
 }
 
 func TestInitPedersen(t *testing.T) {
-	sc := SmartContract{}
 	ctx := &testsfakes.FakeTestTransactionContextInterface{}
 	stub := &testsfakes.FakeTestChaincodeStubInterface{}
 	//stub := NewMockStub
@@ -45,7 +44,7 @@ func TestInitPedersen(t *testing.T) {
 	}
 	H, bindingFactor, _ := generateRandomCommitment(100)
 
-	sc.InitPedersen(ctx, H, bindingFactor) //test that it is calling put state with those input params
+	InitPedersen(ctx, H, bindingFactor) //test that it is calling put state with those input params
 
 	//Let's check that putstate was called correctly.
 	_, HJSON := stub.PutStateArgsForCall(0)
@@ -63,6 +62,45 @@ func TestInitPedersen(t *testing.T) {
 	if !bindingFactor_Test.Equals(&bindingFactor) {
 		t.Fatal("Error")
 	}
+}
+
+func TestGetPedersenParams(t *testing.T) {
+	//sc := SmartContract{}
+	ctx := &testsfakes.FakeTestTransactionContextInterface{}
+	stub := &testsfakes.FakeTestChaincodeStubInterface{}
+	//stub := NewMockStub
+	ctx.GetStubStub = func() shim.ChaincodeStubInterface {
+		return stub
+	}
+	stub.GetTxIDStub = func() string {
+		return "TxidTest"
+	}
+	H, bindingFactor, zeroPedersen := generateRandomCommitment(100)
+	HJSON, _ := H.MarshalBinary()
+	stub.PutState(PEDERSEN_H_ID, HJSON)
+	BindingFactorJSON, _ := bindingFactor.MarshalBinary()
+	stub.PutState(PEDERSEN_BINDING_ID, BindingFactorJSON)
+	ZeroPedersenJSON, _ := zeroPedersen.MarshalBinary()
+	stub.GetStateReturnsOnCall(0, HJSON, nil)
+	stub.GetStateReturnsOnCall(1, BindingFactorJSON, nil)
+	stub.GetStateReturnsOnCall(2, ZeroPedersenJSON, nil)
+
+	var H2, zeroPedersen2 *ristretto.Point
+	var bindingFactor2 *ristretto.Scalar
+	H2, bindingFactor2, zeroPedersen2, _ = GetPedersenParams(ctx)
+
+	if !H2.Equals(&H) {
+		t.Fatal("Error")
+	}
+
+	if !zeroPedersen2.Equals(&zeroPedersen) {
+		t.Fatal("Error")
+	}
+
+	if !bindingFactor2.Equals(&bindingFactor) {
+		t.Fatal("Error")
+	}
+
 }
 
 func generateRandomCommitment(amount int64) (ristretto.Point, ristretto.Scalar, ristretto.Point) {

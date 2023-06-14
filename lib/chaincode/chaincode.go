@@ -52,12 +52,10 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 		return fmt.Errorf("Minting failed: %v", err)
 	}
 
-	pedersenParams, err := GetPedersenParams(ctx)
+	_, _, zeroCommitted, err := GetPedersenParams(ctx)
 	if err != nil {
 		return fmt.Errorf("Minting failed: %v", err)
 	}
-
-	zeroCommitted := pedersenParams.ZeroCommitted
 	// Check minter authorization - this sample assumes Org1 is the central banker with privilege to mint new tokens
 	clientMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
@@ -87,7 +85,7 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 
 	// If minter current balance doesn't yet exist, we'll create it with a current balance of 0
 	if currentBalanceBytes == nil {
-		currentBalance = zeroCommitted
+		currentBalance = *zeroCommitted
 	} else {
 		err = currentBalance.UnmarshalBinary(currentBalanceBytes) // Error handling not needed since Itoa() was used when setting the account balance, guaranteeing it was an integer.
 	}
@@ -603,7 +601,7 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 // param {String} decimals The decimals used for the token operations
 func (s *SmartContract) Initialize(ctx contractapi.TransactionContextInterface, name string, symbol string, decimals string, H ristretto.Point, bindingFactor ristretto.Scalar) (bool, error) {
 
-	err := s.InitPedersen(ctx, H, bindingFactor)
+	err := InitPedersen(ctx, H, bindingFactor)
 	if err != nil {
 		return false, fmt.Errorf("failed to init Pedersen Params: %v", err)
 	}
