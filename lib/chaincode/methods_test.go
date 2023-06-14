@@ -1,16 +1,7 @@
 package chaincode
 
-//TODO: add test - look how to mock context etc.
-
-// mockchaincode := new(chaincodetest.MockChainCode)
-// mockStub := shimtest.NewMockStub("TestJoinService Stub", mockchaincode)
-// mockStub.MockTransactionStart("TestTXN_1")
-// ctx := trxcontext.GetNewCtx(mockStub)
-// controller := new(Controller)
-// controller.Ctx = ctx
-// mockStub.ChannelID = "TestChannel"
-
 import (
+	"fmt"
 	"math/big"
 	"pedersen-commitment-transfer/lib/tests/testsfakes"
 	"pedersen-commitment-transfer/src/pedersen"
@@ -18,24 +9,34 @@ import (
 
 	"github.com/bwesterb/go-ristretto"
 	"github.com/hyperledger/fabric-chaincode-go/shim"
+	"github.com/stretchr/testify/assert"
 )
 
-var _TestPedersen = struct {
+var _TestEncryption = []struct {
 	name        string
 	amount      int64
-	wrongH      ristretto.Point
+	wrongAmount int64
+	isError     bool
 	errorString string
 }{
-	name:        "Invalid encryption",
-	amount:      100,
-	wrongH:      pedersen.GenerateH(),
-	errorString: "encryption not valid",
+	{
+		name:        "OK",
+		amount:      100,
+		wrongAmount: 100,
+		isError:     false,
+	},
+	{
+		name:        "Invalid encryption",
+		amount:      100,
+		wrongAmount: 50,
+		isError:     true,
+		errorString: "encryption not valid",
+	},
 }
 
 func TestInitPedersen(t *testing.T) {
 	ctx := &testsfakes.FakeTestTransactionContextInterface{}
 	stub := &testsfakes.FakeTestChaincodeStubInterface{}
-	//stub := NewMockStub
 	ctx.GetStubStub = func() shim.ChaincodeStubInterface {
 		return stub
 	}
@@ -44,7 +45,7 @@ func TestInitPedersen(t *testing.T) {
 	}
 	H, bindingFactor, _ := generateRandomCommitment(100)
 
-	InitPedersen(ctx, H, bindingFactor) //test that it is calling put state with those input params
+	InitPedersen(ctx, H, bindingFactor)
 
 	//Let's check that putstate was called correctly.
 	_, HJSON := stub.PutStateArgsForCall(0)
@@ -65,10 +66,8 @@ func TestInitPedersen(t *testing.T) {
 }
 
 func TestGetPedersenParams(t *testing.T) {
-	//sc := SmartContract{}
 	ctx := &testsfakes.FakeTestTransactionContextInterface{}
 	stub := &testsfakes.FakeTestChaincodeStubInterface{}
-	//stub := NewMockStub
 	ctx.GetStubStub = func() shim.ChaincodeStubInterface {
 		return stub
 	}
@@ -99,6 +98,49 @@ func TestGetPedersenParams(t *testing.T) {
 
 	if !bindingFactor2.Equals(&bindingFactor) {
 		t.Fatal("Error")
+	}
+
+	var htest ristretto.Point
+	htest.UnmarshalBinary(nil)
+	fmt.Println(htest)
+
+}
+
+func TestIsValidEncryption(t *testing.T) {
+	ctx := &testsfakes.FakeTestTransactionContextInterface{}
+	stub := &testsfakes.FakeTestChaincodeStubInterface{}
+	ctx.GetStubStub = func() shim.ChaincodeStubInterface {
+		return stub
+	}
+	stub.GetTxIDStub = func() string {
+		return "TxidTest"
+	}
+	for i, testcase := range _TestEncryption {
+		t.Run(testcase.name, func(t *testing.T) {
+
+			//It uses GetPedersenParams under the hood, hence similar mocking methods.
+			H, bindingFactor, committedAmount := generateRandomCommitment(testcase.amount)
+			HJSON, _ := H.MarshalBinary()
+			stub.PutState(PEDERSEN_H_ID, HJSON)
+			BindingFactorJSON, _ := bindingFactor.MarshalBinary()
+			stub.PutState(PEDERSEN_BINDING_ID, BindingFactorJSON)
+			committedAmountJSON, _ := committedAmount.MarshalBinary()
+
+			//We need one set of calls per iteration
+			stub.GetStateReturnsOnCall(i, HJSON, nil)
+			stub.GetStateReturnsOnCall(i+1, BindingFactorJSON, nil)
+			stub.GetStateReturnsOnCall(i+2, committedAmountJSON, nil)
+			//***********************************************************************
+
+			err := IsValidEncryption(ctx, testcase.wrongAmount, &committedAmount)
+			if !testcase.isError {
+				if err != nil {
+					t.Fatalf("Error is: %v", err)
+				}
+			} else {
+				assert.EqualError(t, err, testcase.errorString)
+			}
+		})
 	}
 
 }
