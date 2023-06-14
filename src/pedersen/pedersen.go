@@ -1,6 +1,7 @@
 package pedersen
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/bwesterb/go-ristretto"
@@ -39,9 +40,10 @@ func Sub(cX, cY *ristretto.Point) ristretto.Point {
 }
 
 // Subtract two known values with blinding factors
-//   and compute the committed value
-//   add rX - rY (blinding factor private keys)
-//   add vX - vY (hidden values)
+//
+//	and compute the committed value
+//	add rX - rY (blinding factor private keys)
+//	add vX - vY (hidden values)
 func SubPrivately(H *ristretto.Point, rX, rY *ristretto.Scalar, vX, vY *big.Int) ristretto.Point {
 	var rDif ristretto.Scalar
 	var vDif big.Int
@@ -68,9 +70,10 @@ func Add(cX, cY *ristretto.Point) ristretto.Point {
 }
 
 // Add two known values with blinding factors
-//   and compute the committed value
-//   add rX + rY (blinding factor private keys)
-//   add vX + vY (hidden values)
+//
+//	and compute the committed value
+//	add rX + rY (blinding factor private keys)
+//	add vX + vY (hidden values)
 func AddPrivately(H *ristretto.Point, rX, rY *ristretto.Scalar, vX, vY *big.Int) ristretto.Point {
 	var rDif ristretto.Scalar
 	var vDif big.Int
@@ -87,4 +90,18 @@ func AddPrivately(H *ristretto.Point, rX, rY *ristretto.Scalar, vX, vY *big.Int)
 	vPoint.ScalarMult(H, &vScalar)
 	result.Add(&rPoint, &vPoint)
 	return result
+}
+
+func Validate(x int64, committedAmount ristretto.Point, H ristretto.Point, rX ristretto.Scalar) bool {
+	var vX ristretto.Scalar
+	value := big.NewInt(x)
+
+	committedValue := CommitTo(&H, &rX, vX.SetBigInt(value))
+	fmt.Println(committedAmount)
+	fmt.Println(committedValue)
+	if committedAmount.Equals(&committedValue) {
+		return true
+	} else {
+		return false
+	}
 }

@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+//TODO: this implementation of pedersen uses signed integers, hence we can have a negative commitment after subtraction
+//TODO: check if valid on wallet/client side, raise error there otherwise trigger smart contract method
 var _TestCommittedValues = []struct {
 	name    string
 	H       ristretto.Point
