@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"pedersen-commitment-transfer/src/pedersen"
 	"strconv"
 
 	"github.com/bwesterb/go-ristretto"
@@ -15,6 +16,7 @@ const nameKey = "name"
 const symbolKey = "symbol"
 const decimalsKey = "decimals"
 const totalSupplyKey = "totalSupply"
+const temporaryAccountAddress = "TempAccount"
 
 // Define objectType names for prefix
 const allowancePrefix = "allowance"
@@ -94,7 +96,7 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 		return err
 	}
 
-	updatedBalance.Add(&currentBalance, &committedAmount)
+	updatedBalance = pedersen.Add(&currentBalance, &committedAmount)
 
 	updatedBalanceBytes, err := updatedBalance.MarshalBinary()
 	if err != nil {
@@ -243,44 +245,108 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 // 	return nil
 // }
 
-// // Transfer transfers tokens from client account to recipient account
-// // recipient account must be a valid clientID as returned by the ClientID() function
-// // This function triggers a Transfer event
-// func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, recipient string, amount int) error {
+// Transfer transfers tokens from client account to recipient account
+// recipient account must be a valid clientID as returned by the ClientID() function
+// This function triggers a Transfer event
+func (s *SmartContract) Transfer2Recipient(ctx contractapi.TransactionContextInterface, amount int64, committedAmount ristretto.Point, currentBalance int64, recipient string) error {
 
-// 	// Check if contract has been intilized first
-// 	initialized, err := checkInitialized(ctx)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
-// 	}
-// 	if !initialized {
-// 		return fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
-// 	}
+	if amount > currentBalance {
+		return fmt.Errorf("You cannot send less than 0")
+	}
+	if amount > currentBalance {
+		return fmt.Errorf("You cannot send more money that what you have available")
+	}
 
-// 	// Get ID of submitting client identity
-// 	clientID, err := ctx.GetClientIdentity().GetID()
-// 	if err != nil {
-// 		return fmt.Errorf("failed to get client id: %v", err)
-// 	}
+	// Check if contract has been intilized first
+	initialized, err := checkInitialized(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
+	}
+	if !initialized {
+		return fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
+	}
 
-// 	err = transferHelper(ctx, clientID, recipient, amount)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to transfer: %v", err)
-// 	}
+	//Check if the encryption is valid
+	err = IsValidEncryption(ctx, amount, &committedAmount)
+	if err != nil {
+		return fmt.Errorf("Minting failed: %v", err)
+	}
 
-// 	// Emit the Transfer event
-// 	transferEvent := event{clientID, recipient, amount}
-// 	transferEventJSON, err := json.Marshal(transferEvent)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
-// 	}
-// 	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to set event: %v", err)
-// 	}
+	// Get ID of submitting client identity
+	clientID, err := ctx.GetClientIdentity().GetID()
+	if err != nil {
+		return fmt.Errorf("failed to get client id: %v", err)
+	}
 
-// 	return nil
-// }
+	err = transferHelper(ctx, clientID, recipient, committedAmount)
+	if err != nil {
+		return fmt.Errorf("failed to transfer: %v", err)
+	}
+
+	// Emit the Transfer event
+	transferEvent := event{clientID, recipient, committedAmount}
+	transferEventJSON, err := json.Marshal(transferEvent)
+	if err != nil {
+		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+	}
+	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
+	if err != nil {
+		return fmt.Errorf("failed to set event: %v", err)
+	}
+
+	return nil
+}
+
+// Transfer transfers tokens from client account to recipient account
+// recipient account must be a valid clientID as returned by the ClientID() function
+// This function triggers a Transfer event
+func (s *SmartContract) Transfer2TempAccount(ctx contractapi.TransactionContextInterface, amount int64, committedAmount ristretto.Point, currentBalance int64) error {
+
+	if amount > currentBalance {
+		return fmt.Errorf("You cannot send less than 0")
+	}
+	if amount > currentBalance {
+		return fmt.Errorf("You cannot send more money that what you have available")
+	}
+
+	// Check if contract has been intilized first
+	initialized, err := checkInitialized(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
+	}
+	if !initialized {
+		return fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
+	}
+
+	//Check if the encryption is valid
+	err = IsValidEncryption(ctx, amount, &committedAmount)
+	if err != nil {
+		return fmt.Errorf("Minting failed: %v", err)
+	}
+
+	// Get ID of submitting client identity
+	clientID, err := ctx.GetClientIdentity().GetID()
+	if err != nil {
+		return fmt.Errorf("failed to get client id: %v", err)
+	}
+
+	err = transferHelper(ctx, clientID, temporaryAccountAddress, committedAmount)
+	if err != nil {
+		return fmt.Errorf("failed to transfer: %v", err)
+	}
+
+	// Emit the Transfer event
+	transferEvent := event{clientID, temporaryAccountAddress, committedAmount}
+	transferEventJSON, err := json.Marshal(transferEvent)
+	if err != nil {
+		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+	}
+	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
+	if err != nil {
+		return fmt.Errorf("failed to set event: %v", err)
+	}
+	return nil
+}
 
 // // BalanceOf returns the balance of the given account
 // func (s *SmartContract) BalanceOf(ctx contractapi.TransactionContextInterface, account string) (int, error) {
@@ -645,66 +711,61 @@ func (s *SmartContract) Initialize(ctx contractapi.TransactionContextInterface, 
 
 // transferHelper is a helper function that transfers tokens from the "from" address to the "to" address
 // Dependant functions include Transfer and TransferFrom
-func transferHelper(ctx contractapi.TransactionContextInterface, from string, to string, value int) error {
+func transferHelper(ctx contractapi.TransactionContextInterface, from string, to string, committedAmount ristretto.Point) error {
 
 	if from == to {
 		return fmt.Errorf("cannot transfer to and from same client account")
-	}
-
-	if value < 0 { // transfer of 0 is allowed in ERC-20, so just validate against negative amounts
-		return fmt.Errorf("transfer amount cannot be negative")
 	}
 
 	fromCurrentBalanceBytes, err := ctx.GetStub().GetState(from)
 	if err != nil {
 		return fmt.Errorf("failed to read client account %s from world state: %v", from, err)
 	}
-
 	if fromCurrentBalanceBytes == nil {
 		return fmt.Errorf("client account %s has no balance", from)
 	}
 
-	fromCurrentBalance, _ := strconv.Atoi(string(fromCurrentBalanceBytes)) // Error handling not needed since Itoa() was used when setting the account balance, guaranteeing it was an integer.
+	var fromCurrentBalance ristretto.Point //variable to store the current committed balance of sender
+	err = fromCurrentBalance.UnmarshalBinary(fromCurrentBalanceBytes)
 
-	if fromCurrentBalance < value {
-		return fmt.Errorf("client account %s has insufficient funds", from)
-	}
+	//Remove funds from committed amount of sender
+	updatedFromBalance := pedersen.Sub(&fromCurrentBalance, &committedAmount)
+	//
 
-	toCurrentBalanceBytes, err := ctx.GetStub().GetState(to)
+	toCurrentBalanceBytes, err := ctx.GetStub().GetState(from)
 	if err != nil {
-		return fmt.Errorf("failed to read recipient account %s from world state: %v", to, err)
+		return fmt.Errorf("failed to read target account %s from world state: %v", from, err)
 	}
 
-	var toCurrentBalance int
-	// If recipient current balance doesn't yet exist, we'll create it with a current balance of 0
-	if toCurrentBalanceBytes == nil {
-		toCurrentBalance = 0
-	} else {
-		toCurrentBalance, _ = strconv.Atoi(string(toCurrentBalanceBytes)) // Error handling not needed since Itoa() was used when setting the account balance, guaranteeing it was an integer.
-	}
+	var toCurrentBalance ristretto.Point //variable to store the current committed balance of sender
+	err = toCurrentBalance.UnmarshalBinary(toCurrentBalanceBytes)
 
-	fromUpdatedBalance, err := sub(fromCurrentBalance, value)
-	if err != nil {
-		return err
-	}
+	//add funds to recipient
+	updatedToBalance := pedersen.Add(&toCurrentBalance, &committedAmount)
+	//
 
-	toUpdatedBalance, err := add(toCurrentBalance, value)
+	updatedFromBalanceBytes, err := fromCurrentBalance.MarshalBinary()
 	if err != nil {
 		return err
 	}
 
-	err = ctx.GetStub().PutState(from, []byte(strconv.Itoa(fromUpdatedBalance)))
+	err = ctx.GetStub().PutState(from, updatedFromBalanceBytes)
 	if err != nil {
 		return err
 	}
 
-	err = ctx.GetStub().PutState(to, []byte(strconv.Itoa(toUpdatedBalance)))
+	updatedToBalanceBytes, err := toCurrentBalance.MarshalBinary()
 	if err != nil {
 		return err
 	}
 
-	log.Printf("client %s balance updated from %d to %d", from, fromCurrentBalance, fromUpdatedBalance)
-	log.Printf("recipient %s balance updated from %d to %d", to, toCurrentBalance, toUpdatedBalance)
+	err = ctx.GetStub().PutState(from, updatedToBalanceBytes)
+	if err != nil {
+		return err
+	}
+
+	log.Printf("client %s balance updated from %d to %d", from, fromCurrentBalance, updatedFromBalance)
+	log.Printf("recipient %s balance updated from %d to %d", to, toCurrentBalance, updatedToBalance)
 
 	return nil
 }
