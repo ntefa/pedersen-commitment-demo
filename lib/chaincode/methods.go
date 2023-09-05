@@ -13,15 +13,6 @@ const PEDERSEN_H_ID = "PEDERSEN_H"
 const PEDERSEN_BINDING_ID = "PEDERSEN_BINDING"
 const PEDERSEN_ZERO_ID = "PEDERSEN_ZERO"
 
-// TODO: better to store as single params, each with its key. Look at totalsupply get in token-erc-20
-type PedersenParams struct {
-	ID            string           `json:"ID"`
-	H             ristretto.Point  `json:"H"`
-	BindingFactor ristretto.Scalar `json:"BindingFactor"`
-	ZeroCommitted ristretto.Point  `json:"ZeroCommitted"` //TODO: think if the value of zero committed should be public, stored in the ledger or some other way
-	test          int
-}
-
 func IsValidEncryption(ctx contractapi.TransactionContextInterface, x int64, committedAmount *ristretto.Point) error {
 
 	H, bindingFactor, _, err := GetPedersenParams(ctx)
