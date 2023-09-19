@@ -77,7 +77,6 @@ func GetPedersenParams(ctx contractapi.TransactionContextInterface) (*ristretto.
 	if err != nil {
 		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
 	}
-
 	BindingFactorJSON, err := ctx.GetStub().GetState(PEDERSEN_BINDING_ID)
 	if err != nil {
 		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)

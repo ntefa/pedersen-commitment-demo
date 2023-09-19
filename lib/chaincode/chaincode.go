@@ -1,7 +1,9 @@
 package chaincode
 
 import (
+	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"pedersen-commitment-transfer/src/pedersen"
@@ -35,51 +37,67 @@ type event struct {
 	Value ristretto.Point `json:"value"`
 }
 
+// Pass amount as transient map -> check Mirek's public repo for blidning signatures for implementation
 // Mint creates new tokens and adds them to minter's account balance
 // This function triggers a Transfer event
-func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount int64, committedAmount ristretto.Point) error {
+func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, committedAmount ristretto.Point) (string, error) {
 
 	// Check if contract has been intilized first
 	initialized, err := checkInitialized(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
+		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
 	}
 	if !initialized {
-		return fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
+		return "", fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
 	}
+
+	//ContractAPI doesn't support transient map....
+	//We must use transient map so that private key is not revealed
+	tr, err := ctx.GetStub().GetTransient()
+	if err != nil {
+		return "", fmt.Errorf("failed to get Transient field: %v", err)
+	}
+	transientAmount, ok := tr["amount"]
+	if !ok {
+		return "", errors.New("key not found")
+	}
+
+	//Convert transient data from bytes to int64
+	var amount int64
+	binary.BigEndian.PutUint64(transientAmount, uint64(amount))
 
 	//Check if the encryption is valid
 	err = IsValidEncryption(ctx, amount, &committedAmount)
 	if err != nil {
-		return fmt.Errorf("Minting failed: %v", err)
+		return "", fmt.Errorf("Minting failed: %v", err)
 	}
 
 	_, _, zeroCommitted, err := GetPedersenParams(ctx)
 	if err != nil {
-		return fmt.Errorf("Minting failed: %v", err)
+		return "", fmt.Errorf("Minting failed: %v", err)
 	}
 	// Check minter authorization - this sample assumes Org1 is the central banker with privilege to mint new tokens
 	clientMSPID, err := ctx.GetClientIdentity().GetMSPID()
 	if err != nil {
-		return fmt.Errorf("failed to get MSPID: %v", err)
+		return "", fmt.Errorf("failed to get MSPID: %v", err)
 	}
 	if clientMSPID != "Org1MSP" {
-		return fmt.Errorf("client is not authorized to mint new tokens")
+		return "", fmt.Errorf("client is not authorized to mint new tokens")
 	}
 
 	// Get ID of submitting client identity
 	minter, err := ctx.GetClientIdentity().GetID()
 	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
+		return "", fmt.Errorf("failed to get client id: %v", err)
 	}
 
 	if amount <= 0 {
-		return fmt.Errorf("mint amount must be a positive integer")
+		return "", fmt.Errorf("mint amount must be a positive integer")
 	}
 
 	currentBalanceBytes, err := ctx.GetStub().GetState(minter)
 	if err != nil {
-		return fmt.Errorf("failed to read minter account %s from world state: %v", minter, err)
+		return "", fmt.Errorf("failed to read minter account %s from world state: %v", minter, err)
 	}
 
 	var currentBalance ristretto.Point
@@ -93,25 +111,25 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 	}
 
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	updatedBalance = pedersen.Add(&currentBalance, &committedAmount)
 
 	updatedBalanceBytes, err := updatedBalance.MarshalBinary()
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = ctx.GetStub().PutState(minter, updatedBalanceBytes)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Update the totalSupply
 	totalSupplyBytes, err := ctx.GetStub().GetState(totalSupplyKey)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve total token supply: %v", err)
+		return "", fmt.Errorf("failed to retrieve total token supply: %v", err)
 	}
 
 	var totalSupply int
@@ -126,28 +144,27 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 	// Add the mint amount to the total supply and update the state
 	totalSupply, err = add(totalSupply, int(amount)) //TODO: convert all to int64
 	if err != nil {
-		return err
+		return "", err
 	}
-
 	err = ctx.GetStub().PutState(totalSupplyKey, []byte(strconv.Itoa(totalSupply)))
 	if err != nil {
-		return err
+		return "", err
 	}
-
+	ctx.GetStub().GetTransient()
 	// Emit the Transfer event
 	transferEvent := event{"0x0", minter, committedAmount}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
-		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
 	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
 	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
+		return "", fmt.Errorf("failed to set event: %v", err)
 	}
 
 	log.Printf("minter account %s balance updated from %d to %d", minter, currentBalance, updatedBalance)
 
-	return nil
+	return ctx.GetStub().GetTxID(), nil
 }
 
 // // Burn redeems tokens the minter's account balance
@@ -248,104 +265,68 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, amount
 // Transfer transfers tokens from client account to recipient account
 // recipient account must be a valid clientID as returned by the ClientID() function
 // This function triggers a Transfer event
-func (s *SmartContract) Transfer2Recipient(ctx contractapi.TransactionContextInterface, amount int64, committedAmount ristretto.Point, currentBalance int64, recipient string) error {
+func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, committedAmount ristretto.Point, currentBalance int64, recipient string) (string, error) {
+
+	//ContractAPI doesn't support transient map....
+	//We must use transient map so that private key is not revealed
+	tr, err := ctx.GetStub().GetTransient()
+	if err != nil {
+		return "", fmt.Errorf("failed to get Transient field: %v", err)
+	}
+	transientAmount, ok := tr["amount"]
+	if !ok {
+		return "", errors.New("key not found")
+	}
+
+	//Convert transient data from bytes to int64
+	var amount int64
+	binary.BigEndian.PutUint64(transientAmount, uint64(amount))
 
 	if amount > currentBalance {
-		return fmt.Errorf("You cannot send less than 0")
+		return "", fmt.Errorf("You cannot send less than 0")
 	}
 	if amount > currentBalance {
-		return fmt.Errorf("You cannot send more money that what you have available")
+		return "", fmt.Errorf("You cannot send more money that what you have available")
 	}
 
 	// Check if contract has been intilized first
 	initialized, err := checkInitialized(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
+		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
 	}
 	if !initialized {
-		return fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
+		return "", fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
 	}
 
 	//Check if the encryption is valid
 	err = IsValidEncryption(ctx, amount, &committedAmount)
 	if err != nil {
-		return fmt.Errorf("Minting failed: %v", err)
+		return "", fmt.Errorf("Minting failed: %v", err)
 	}
 
 	// Get ID of submitting client identity
 	clientID, err := ctx.GetClientIdentity().GetID()
 	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
+		return "", fmt.Errorf("failed to get client id: %v", err)
 	}
 
 	err = transferHelper(ctx, clientID, recipient, committedAmount)
 	if err != nil {
-		return fmt.Errorf("failed to transfer: %v", err)
+		return "", fmt.Errorf("failed to transfer: %v", err)
 	}
 
 	// Emit the Transfer event
 	transferEvent := event{clientID, recipient, committedAmount}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
-		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
+		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
 	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
 	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
+		return "", fmt.Errorf("failed to set event: %v", err)
 	}
 
-	return nil
-}
-
-// Transfer transfers tokens from client account to recipient account
-// recipient account must be a valid clientID as returned by the ClientID() function
-// This function triggers a Transfer event
-func (s *SmartContract) Transfer2TempAccount(ctx contractapi.TransactionContextInterface, amount int64, committedAmount ristretto.Point, currentBalance int64) error {
-
-	if amount > currentBalance {
-		return fmt.Errorf("You cannot send less than 0")
-	}
-	if amount > currentBalance {
-		return fmt.Errorf("You cannot send more money that what you have available")
-	}
-
-	// Check if contract has been intilized first
-	initialized, err := checkInitialized(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
-	}
-	if !initialized {
-		return fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
-	}
-
-	//Check if the encryption is valid
-	err = IsValidEncryption(ctx, amount, &committedAmount)
-	if err != nil {
-		return fmt.Errorf("Minting failed: %v", err)
-	}
-
-	// Get ID of submitting client identity
-	clientID, err := ctx.GetClientIdentity().GetID()
-	if err != nil {
-		return fmt.Errorf("failed to get client id: %v", err)
-	}
-
-	err = transferHelper(ctx, clientID, temporaryAccountAddress, committedAmount)
-	if err != nil {
-		return fmt.Errorf("failed to transfer: %v", err)
-	}
-
-	// Emit the Transfer event
-	transferEvent := event{clientID, temporaryAccountAddress, committedAmount}
-	transferEventJSON, err := json.Marshal(transferEvent)
-	if err != nil {
-		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
-	}
-	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
-	if err != nil {
-		return fmt.Errorf("failed to set event: %v", err)
-	}
-	return nil
+	return ctx.GetStub().GetTxID(), nil
 }
 
 // // BalanceOf returns the balance of the given account
@@ -759,10 +740,14 @@ func transferHelper(ctx contractapi.TransactionContextInterface, from string, to
 		return err
 	}
 
-	err = ctx.GetStub().PutState(from, updatedToBalanceBytes)
+	err = ctx.GetStub().PutState(to, updatedToBalanceBytes)
 	if err != nil {
 		return err
 	}
+
+	//TODO: check if there is Txid -> check hlf docs where I retrieve the code.
+	// TxID needed to run the select query -> select blocknumber from state where key = txid / select max block number
+	// GetTXId method
 
 	log.Printf("client %s balance updated from %d to %d", from, fromCurrentBalance, updatedFromBalance)
 	log.Printf("recipient %s balance updated from %d to %d", to, toCurrentBalance, updatedToBalance)
