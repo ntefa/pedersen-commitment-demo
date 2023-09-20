@@ -97,7 +97,7 @@ func GetPedersenParams(ctx contractapi.TransactionContextInterface) (*ristretto.
 	} else {
 		err = H.UnmarshalBinary(HJSON)
 		if err != nil {
-			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal H : %v", err)
+			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to unmarshal H : %v", err)
 		}
 	}
 
@@ -108,7 +108,7 @@ func GetPedersenParams(ctx contractapi.TransactionContextInterface) (*ristretto.
 	} else {
 		err = bindingFactor.UnmarshalBinary(BindingFactorJSON)
 		if err != nil {
-			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal the Binding Factor : %v", err)
+			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to unmarshal the Binding Factor : %v", err)
 		}
 	}
 
@@ -119,7 +119,7 @@ func GetPedersenParams(ctx contractapi.TransactionContextInterface) (*ristretto.
 	} else {
 		err = zeroPedersen.UnmarshalBinary(ZeroPedersenJSON)
 		if err != nil {
-			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal the vale for the committed zero : %v", err)
+			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to unmarshal the vale for the committed zero : %v", err)
 		}
 	}
 

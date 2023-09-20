@@ -18,10 +18,10 @@ const nameKey = "name"
 const symbolKey = "symbol"
 const decimalsKey = "decimals"
 const totalSupplyKey = "totalSupply"
-const temporaryAccountAddress = "TempAccount"
+const temporaryAccountAddressPrefix = "Staged"
 
 // Define objectType names for prefix
-const allowancePrefix = "allowance"
+// const allowancePrefix = "allowance"
 
 // Define key names for options
 
@@ -37,6 +37,11 @@ type event struct {
 	Value ristretto.Point `json:"value"`
 }
 
+type transferDetails struct {
+	Sender    string `json:"sender"`
+	Recipient string `json:"recipient"`
+}
+
 // Pass amount as transient map -> check Mirek's public repo for blidning signatures for implementation
 // Mint creates new tokens and adds them to minter's account balance
 // This function triggers a Transfer event
@@ -48,7 +53,7 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, commit
 		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
 	}
 	if !initialized {
-		return "", fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
+		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
 	}
 
 	//ContractAPI doesn't support transient map....
@@ -69,12 +74,12 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, commit
 	//Check if the encryption is valid
 	err = IsValidEncryption(ctx, amount, &committedAmount)
 	if err != nil {
-		return "", fmt.Errorf("Minting failed: %v", err)
+		return "", fmt.Errorf("minting failed: %v", err)
 	}
 
 	_, _, zeroCommitted, err := GetPedersenParams(ctx)
 	if err != nil {
-		return "", fmt.Errorf("Minting failed: %v", err)
+		return "", fmt.Errorf("minting failed: %v", err)
 	}
 	// Check minter authorization - this sample assumes Org1 is the central banker with privilege to mint new tokens
 	clientMSPID, err := ctx.GetClientIdentity().GetMSPID()
@@ -165,107 +170,13 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, commit
 	log.Printf("minter account %s balance updated from %d to %d", minter, currentBalance, updatedBalance)
 
 	return ctx.GetStub().GetTxID(), nil
+
 }
-
-// // Burn redeems tokens the minter's account balance
-// // This function triggers a Transfer event
-// func (s *SmartContract) Burn(ctx contractapi.TransactionContextInterface, amount int) error {
-
-// 	// Check if contract has been intilized first
-// 	initialized, err := checkInitialized(ctx)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to check if contract is already initialized: %v", err)
-// 	}
-// 	if !initialized {
-// 		return fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
-// 	}
-// 	// Check minter authorization - this sample assumes Org1 is the central banker with privilege to burn new tokens
-// 	clientMSPID, err := ctx.GetClientIdentity().GetMSPID()
-// 	if err != nil {
-// 		return fmt.Errorf("failed to get MSPID: %v", err)
-// 	}
-// 	if clientMSPID != "Org1MSP" {
-// 		return fmt.Errorf("client is not authorized to mint new tokens")
-// 	}
-
-// 	// Get ID of submitting client identity
-// 	minter, err := ctx.GetClientIdentity().GetID()
-// 	if err != nil {
-// 		return fmt.Errorf("failed to get client id: %v", err)
-// 	}
-
-// 	if amount <= 0 {
-// 		return errors.New("burn amount must be a positive integer")
-// 	}
-
-// 	currentBalanceBytes, err := ctx.GetStub().GetState(minter)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to read minter account %s from world state: %v", minter, err)
-// 	}
-
-// 	var currentBalance int
-
-// 	// Check if minter current balance exists
-// 	if currentBalanceBytes == nil {
-// 		return errors.New("The balance does not exist")
-// 	}
-
-// 	currentBalance, _ = strconv.Atoi(string(currentBalanceBytes)) // Error handling not needed since Itoa() was used when setting the account balance, guaranteeing it was an integer.
-
-// 	updatedBalance, err := sub(currentBalance, amount)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	err = ctx.GetStub().PutState(minter, []byte(strconv.Itoa(updatedBalance)))
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// Update the totalSupply
-// 	totalSupplyBytes, err := ctx.GetStub().GetState(totalSupplyKey)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to retrieve total token supply: %v", err)
-// 	}
-
-// 	// If no tokens have been minted, throw error
-// 	if totalSupplyBytes == nil {
-// 		return errors.New("totalSupply does not exist")
-// 	}
-
-// 	totalSupply, _ := strconv.Atoi(string(totalSupplyBytes)) // Error handling not needed since Itoa() was used when setting the totalSupply, guaranteeing it was an integer.
-
-// 	// Subtract the burn amount to the total supply and update the state
-// 	totalSupply, err = sub(totalSupply, amount)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	err = ctx.GetStub().PutState(totalSupplyKey, []byte(strconv.Itoa(totalSupply)))
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	// Emit the Transfer event
-// 	transferEvent := event{minter, "0x0", amount}
-// 	transferEventJSON, err := json.Marshal(transferEvent)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to obtain JSON encoding: %v", err)
-// 	}
-// 	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to set event: %v", err)
-// 	}
-
-// 	log.Printf("minter account %s balance updated from %d to %d", minter, currentBalance, updatedBalance)
-
-// 	return nil
-// }
 
 // Transfer transfers tokens from client account to recipient account
 // recipient account must be a valid clientID as returned by the ClientID() function
 // This function triggers a Transfer event
-func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, committedAmount ristretto.Point, currentBalance int64, recipient string) (string, error) {
+func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, committedAmount ristretto.Point, currentBalance int64) (string, error) {
 
 	//ContractAPI doesn't support transient map....
 	//We must use transient map so that private key is not revealed
@@ -282,11 +193,11 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 	var amount int64
 	binary.BigEndian.PutUint64(transientAmount, uint64(amount))
 
-	if amount > currentBalance {
-		return "", fmt.Errorf("You cannot send less than 0")
+	if amount > currentBalance { //TODO: currentbalance as transient ? Probaly
+		return "", fmt.Errorf("you cannot send less than 0")
 	}
 	if amount > currentBalance {
-		return "", fmt.Errorf("You cannot send more money that what you have available")
+		return "", fmt.Errorf("you cannot send more money that what you have available")
 	}
 
 	// Check if contract has been intilized first
@@ -295,13 +206,13 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
 	}
 	if !initialized {
-		return "", fmt.Errorf("Contract options need to be set before calling any function, call Initialize() to initialize contract")
+		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
 	}
 
 	//Check if the encryption is valid
 	err = IsValidEncryption(ctx, amount, &committedAmount)
 	if err != nil {
-		return "", fmt.Errorf("Minting failed: %v", err)
+		return "", fmt.Errorf("minting failed: %v", err)
 	}
 
 	// Get ID of submitting client identity
@@ -310,6 +221,9 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 		return "", fmt.Errorf("failed to get client id: %v", err)
 	}
 
+	TxID := ctx.GetStub().GetTxID()
+	recipient := temporaryAccountAddressPrefix + "_" + TxID
+
 	err = transferHelper(ctx, clientID, recipient, committedAmount)
 	if err != nil {
 		return "", fmt.Errorf("failed to transfer: %v", err)
@@ -317,6 +231,128 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 
 	// Emit the Transfer event
 	transferEvent := event{clientID, recipient, committedAmount}
+	transferEventJSON, err := json.Marshal(transferEvent)
+	if err != nil {
+		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
+	}
+	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
+	if err != nil {
+		return "", fmt.Errorf("failed to set event: %v", err)
+	}
+
+	return ctx.GetStub().GetTxID(), nil
+}
+
+// Transfer transfers tokens from client account to recipient account
+// recipient account must be a valid clientID as returned by the ClientID() function
+// This function triggers a Transfer event
+func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxId string) (string, error) {
+
+	// Check if contract has been intilized first
+	initialized, err := checkInitialized(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
+	}
+	if !initialized {
+		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
+	}
+
+	//TODO:
+	// Check validity of HashTimeLocked contract
+
+	//
+
+	//ctx.GetStub().GetQueryResult("")
+
+	// Get ID of submitting client identity
+	clientID, err := ctx.GetClientIdentity().GetID()
+	if err != nil {
+		return "", fmt.Errorf("failed to get client id: %v", err)
+	}
+
+	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
+
+	committedAmountBytes, err := ctx.GetStub().GetState(temporaryAccountAddress)
+	if err != nil {
+		return "", fmt.Errorf("failed to read client account %s from world state: %v", temporaryAccountAddress, err)
+	}
+	if committedAmountBytes == nil {
+		return "", fmt.Errorf("client account %s has no balance", temporaryAccountAddress)
+	}
+
+	var committedAmount ristretto.Point                         //variable to store the current committed balance of sender
+	err = committedAmount.UnmarshalBinary(committedAmountBytes) //recipient should be clientId
+	if err != nil {
+		return "", fmt.Errorf("error unmarshalling")
+	}
+	// from address should be temporary account
+	err = transferHelper(ctx, temporaryAccountAddress, clientID, committedAmount)
+	if err != nil {
+		return "", fmt.Errorf("failed to transfer: %v", err)
+	}
+
+	// Emit the Transfer event
+	transferEvent := event{temporaryAccountAddress, clientID, committedAmount}
+	transferEventJSON, err := json.Marshal(transferEvent)
+	if err != nil {
+		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
+	}
+	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
+	if err != nil {
+		return "", fmt.Errorf("failed to set event: %v", err)
+	}
+
+	return ctx.GetStub().GetTxID(), nil
+}
+
+func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId string) (string, error) {
+
+	// Check if contract has been intilized first
+	initialized, err := checkInitialized(ctx)
+	if err != nil {
+		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
+	}
+	if !initialized {
+		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
+	}
+
+	//TODO:
+	// Check validity of HashTimeLocked contract
+
+	//
+
+	//ctx.GetStub().GetQueryResult("")
+
+	// Get ID of submitting client identity
+	clientID, err := ctx.GetClientIdentity().GetID()
+	if err != nil {
+		return "", fmt.Errorf("failed to get client id: %v", err)
+	}
+
+	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
+
+	committedAmountBytes, err := ctx.GetStub().GetState(temporaryAccountAddress)
+	if err != nil {
+		return "", fmt.Errorf("failed to read client account %s from world state: %v", temporaryAccountAddress, err)
+	}
+	if committedAmountBytes == nil {
+		return "", fmt.Errorf("client account %s has no balance", temporaryAccountAddress)
+	}
+
+	var committedAmount ristretto.Point                         //variable to store the current committed balance of sender
+	err = committedAmount.UnmarshalBinary(committedAmountBytes) //recipient should be clientId
+	if err != nil {
+		return "", fmt.Errorf("error unmarshalling")
+	}
+
+	//
+	err = transferHelper(ctx, temporaryAccountAddress, clientID, committedAmount) //TODO: we need to send money back to the sender (how do we find the address??)
+	if err != nil {
+		return "", fmt.Errorf("failed to transfer: %v", err)
+	}
+
+	// Emit the Transfer event
+	transferEvent := event{temporaryAccountAddress, clientID, committedAmount}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
@@ -708,7 +744,9 @@ func transferHelper(ctx contractapi.TransactionContextInterface, from string, to
 
 	var fromCurrentBalance ristretto.Point //variable to store the current committed balance of sender
 	err = fromCurrentBalance.UnmarshalBinary(fromCurrentBalanceBytes)
-
+	if err != nil {
+		return fmt.Errorf("error unmarshalling")
+	}
 	//Remove funds from committed amount of sender
 	updatedFromBalance := pedersen.Sub(&fromCurrentBalance, &committedAmount)
 	//
@@ -720,6 +758,9 @@ func transferHelper(ctx contractapi.TransactionContextInterface, from string, to
 
 	var toCurrentBalance ristretto.Point //variable to store the current committed balance of sender
 	err = toCurrentBalance.UnmarshalBinary(toCurrentBalanceBytes)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling")
+	}
 
 	//add funds to recipient
 	updatedToBalance := pedersen.Add(&toCurrentBalance, &committedAmount)
@@ -759,11 +800,10 @@ func transferHelper(ctx contractapi.TransactionContextInterface, from string, to
 func add(b int, q int) (int, error) {
 
 	// Check overflow
-	var sum int
-	sum = q + b
+	sum := q + b
 
 	if (sum < q || sum < b) == (b >= 0 && q >= 0) {
-		return 0, fmt.Errorf("Math: addition overflow occurred %d + %d", b, q)
+		return 0, fmt.Errorf("math: addition overflow occurred %d + %d", b, q)
 	}
 
 	return sum, nil
@@ -787,11 +827,10 @@ func checkInitialized(ctx contractapi.TransactionContextInterface) (bool, error)
 func sub(b int, q int) (int, error) {
 
 	// Check overflow
-	var diff int
-	diff = b - q
+	diff := b - q
 
 	if (diff > b) == (b >= 0 && q >= 0) {
-		return 0, fmt.Errorf("Math: Subtraction overflow occurred  %d - %d", b, q)
+		return 0, fmt.Errorf("math: Subtraction overflow occurred  %d - %d", b, q)
 	}
 
 	return diff, nil
