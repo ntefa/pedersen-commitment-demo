@@ -44,6 +44,24 @@ func storeTxInfo(stub shim.ChaincodeStubInterface, txId string, sender string, a
 	return nil
 }
 
+func getTxInfo(stub shim.ChaincodeStubInterface, TxId string) (string, ristretto.Point, error) {
+	TxInfoBytes, err := stub.GetState(TxId)
+	if err != nil {
+		return "", ristretto.Point{}, fmt.Errorf("failed to read transaction information from world state: %v", err)
+	}
+	var txInfo TxInformation
+	json.Unmarshal(TxInfoBytes, &txInfo)
+	if txInfo.Amount == nil {
+		return "", ristretto.Point{}, fmt.Errorf("temporary account has no balance")
+	}
+	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
+	err = committedAmount.UnmarshalBinary(txInfo.Amount) //recipient should be clientId
+	if err != nil {
+		return "", ristretto.Point{}, fmt.Errorf("error unmarshalling")
+	}
+	return txInfo.Sender, committedAmount, nil
+}
+
 // func (TxInformation) Marshal() ([]byte, error) {
 
 // }

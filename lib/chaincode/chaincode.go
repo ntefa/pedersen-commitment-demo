@@ -251,7 +251,6 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 // recipient account must be a valid clientID as returned by the ClientID() function
 // This function triggers a Transfer event
 func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxId string) (string, error) {
-	stub := ctx.GetStub()
 	// Check if contract has been intilized first
 	initialized, err := checkInitialized(ctx)
 	if err != nil {
@@ -260,6 +259,7 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	if !initialized {
 		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
 	}
+	stub := ctx.GetStub()
 
 	//TODO:
 	// Check validity of HashTimeLocked contract
@@ -277,19 +277,9 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
 
 	// Get Transaction Information
-	TxInfoBytes, err := stub.GetState(TxId)
+	_, committedAmount, err := getTxInfo(stub, TxId)
 	if err != nil {
-		return "", fmt.Errorf("failed to read client account %s from world state: %v", temporaryAccountAddress, err)
-	}
-	var txInfo TxInformation
-	json.Unmarshal(TxInfoBytes, &txInfo)
-	if txInfo.Amount == nil {
-		return "", fmt.Errorf("client account %s has no balance", temporaryAccountAddress)
-	}
-	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
-	err = committedAmount.UnmarshalBinary(txInfo.Amount) //recipient should be clientId
-	if err != nil {
-		return "", fmt.Errorf("error unmarshalling")
+		return "", fmt.Errorf("failed to get transaction info: %v", err)
 	}
 	//
 
@@ -324,6 +314,8 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 		return "", fmt.Errorf("contract options need to be set before calling any function, call Initialize() to initialize contract")
 	}
 
+	stub := ctx.GetStub()
+
 	//TODO:
 	// Check validity of HashTimeLocked contract
 
@@ -339,28 +331,20 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 
 	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
 
-	committedAmountBytes, err := ctx.GetStub().GetState(temporaryAccountAddress)
+	// Get Transaction Information
+	sender, committedAmount, err := getTxInfo(stub, TxId)
 	if err != nil {
-		return "", fmt.Errorf("failed to read client account %s from world state: %v", temporaryAccountAddress, err)
-	}
-	if committedAmountBytes == nil {
-		return "", fmt.Errorf("client account %s has no balance", temporaryAccountAddress)
-	}
-
-	var committedAmount ristretto.Point                         //variable to store the current committed balance of sender
-	err = committedAmount.UnmarshalBinary(committedAmountBytes) //recipient should be clientId
-	if err != nil {
-		return "", fmt.Errorf("error unmarshalling")
+		return "", fmt.Errorf("failed to get transaction info: %v", err)
 	}
 
 	//
-	err = transferHelper(ctx, temporaryAccountAddress, clientID, committedAmount) //TODO: we need to send money back to the sender (how do we find the address??)
+	err = transferHelper(ctx, temporaryAccountAddress, sender, committedAmount)
 	if err != nil {
 		return "", fmt.Errorf("failed to transfer: %v", err)
 	}
 
 	// Emit the Transfer event
-	transferEvent := event{temporaryAccountAddress, clientID, "Money sent!"}
+	transferEvent := event{temporaryAccountAddress, clientID, "Money sent!"} //TODO: need to create custom events for reject and receipt
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
