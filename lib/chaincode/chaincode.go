@@ -32,14 +32,15 @@ type SmartContract struct {
 
 // event provides an organized struct for emitting events
 type event struct {
-	From  string          `json:"from"`
-	To    string          `json:"to"`
-	Value ristretto.Point `json:"value"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Message string `json:"message"`
 }
 
-type transferDetails struct {
+type TransferDetails struct {
 	Sender    string `json:"sender"`
 	Recipient string `json:"recipient"`
+	//Maybe quantity? -> problem with encoding to bytes ristretto's
 }
 
 // Pass amount as transient map -> check Mirek's public repo for blidning signatures for implementation
@@ -155,9 +156,8 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, commit
 	if err != nil {
 		return "", err
 	}
-	ctx.GetStub().GetTransient()
 	// Emit the Transfer event
-	transferEvent := event{"0x0", minter, committedAmount}
+	transferEvent := event{"0x0", minter, "Token Mint"}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
@@ -177,10 +177,10 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, commit
 // recipient account must be a valid clientID as returned by the ClientID() function
 // This function triggers a Transfer event
 func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, committedAmount ristretto.Point, currentBalance int64) (string, error) {
-
+	stub := ctx.GetStub()
 	//ContractAPI doesn't support transient map....
 	//We must use transient map so that private key is not revealed
-	tr, err := ctx.GetStub().GetTransient()
+	tr, err := stub.GetTransient()
 	if err != nil {
 		return "", fmt.Errorf("failed to get Transient field: %v", err)
 	}
@@ -221,7 +221,7 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 		return "", fmt.Errorf("failed to get client id: %v", err)
 	}
 
-	TxID := ctx.GetStub().GetTxID()
+	TxID := stub.GetTxID()
 	recipient := temporaryAccountAddressPrefix + "_" + TxID
 
 	err = transferHelper(ctx, clientID, recipient, committedAmount)
@@ -230,24 +230,28 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 	}
 
 	// Emit the Transfer event
-	transferEvent := event{clientID, recipient, committedAmount}
+	transferEvent := event{clientID, recipient, "Money sent"}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
-	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
+	err = stub.SetEvent("Transfer", transferEventJSON)
 	if err != nil {
 		return "", fmt.Errorf("failed to set event: %v", err)
 	}
 
-	return ctx.GetStub().GetTxID(), nil
+	err = storeTxInfo(stub, TxID, clientID, committedAmount)
+	if err != nil {
+		return "", fmt.Errorf("failed to store transaction info: %v", err)
+	}
+	return TxID, nil
 }
 
 // Transfer transfers tokens from client account to recipient account
 // recipient account must be a valid clientID as returned by the ClientID() function
 // This function triggers a Transfer event
 func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxId string) (string, error) {
-
+	stub := ctx.GetStub()
 	// Check if contract has been intilized first
 	initialized, err := checkInitialized(ctx)
 	if err != nil {
@@ -272,19 +276,23 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 
 	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
 
-	committedAmountBytes, err := ctx.GetStub().GetState(temporaryAccountAddress)
+	// Get Transaction Information
+	TxInfoBytes, err := stub.GetState(TxId)
 	if err != nil {
 		return "", fmt.Errorf("failed to read client account %s from world state: %v", temporaryAccountAddress, err)
 	}
-	if committedAmountBytes == nil {
+	var txInfo TxInformation
+	json.Unmarshal(TxInfoBytes, &txInfo)
+	if txInfo.Amount == nil {
 		return "", fmt.Errorf("client account %s has no balance", temporaryAccountAddress)
 	}
-
-	var committedAmount ristretto.Point                         //variable to store the current committed balance of sender
-	err = committedAmount.UnmarshalBinary(committedAmountBytes) //recipient should be clientId
+	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
+	err = committedAmount.UnmarshalBinary(txInfo.Amount) //recipient should be clientId
 	if err != nil {
 		return "", fmt.Errorf("error unmarshalling")
 	}
+	//
+
 	// from address should be temporary account
 	err = transferHelper(ctx, temporaryAccountAddress, clientID, committedAmount)
 	if err != nil {
@@ -292,17 +300,17 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	}
 
 	// Emit the Transfer event
-	transferEvent := event{temporaryAccountAddress, clientID, committedAmount}
+	transferEvent := event{temporaryAccountAddress, clientID, "Money Sent"}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
-	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
+	err = stub.SetEvent("Transfer", transferEventJSON)
 	if err != nil {
 		return "", fmt.Errorf("failed to set event: %v", err)
 	}
 
-	return ctx.GetStub().GetTxID(), nil
+	return stub.GetTxID(), nil
 }
 
 func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId string) (string, error) {
@@ -352,7 +360,7 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 	}
 
 	// Emit the Transfer event
-	transferEvent := event{temporaryAccountAddress, clientID, committedAmount}
+	transferEvent := event{temporaryAccountAddress, clientID, "Money sent!"}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)

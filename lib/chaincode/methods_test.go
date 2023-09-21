@@ -1,6 +1,7 @@
 package chaincode
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"pedersen-commitment-transfer/lib/tests/testsfakes"
@@ -31,6 +32,20 @@ var _TestEncryption = []struct {
 		wrongAmount: 50,
 		isError:     true,
 		errorString: "encryption not valid",
+	},
+}
+
+var _TestRistrettoMarshalling = []struct {
+	name    string
+	isError bool
+}{
+	{
+		name:    "OK",
+		isError: false,
+	},
+	{
+		name:    "Invalid encryption",
+		isError: true,
 	},
 }
 
@@ -142,7 +157,95 @@ func TestIsValidEncryption(t *testing.T) {
 			}
 		})
 	}
+}
 
+type TestStruct struct {
+	Teststring     string
+	Testcommitment ristretto.Point
+}
+type TestStruct2 struct {
+	Teststring     string
+	Testcommitment []byte
+}
+
+func TestDoubleMarshalling(t *testing.T) {
+	ctx := &testsfakes.FakeTestTransactionContextInterface{}
+	stub := &testsfakes.FakeTestChaincodeStubInterface{}
+	ctx.GetStubStub = func() shim.ChaincodeStubInterface {
+		return stub
+	}
+	stub.GetTxIDStub = func() string {
+		return "TxidTest"
+	}
+	for _, testcase := range _TestRistrettoMarshalling {
+		t.Run(testcase.name, func(t *testing.T) {
+
+			//It uses GetPedersenParams under the hood, hence similar mocking methods.
+			_, _, committedAmount := generateRandomCommitment(10)
+			t.Log(committedAmount)
+			if testcase.isError {
+				testStruct := TestStruct{
+					Teststring:     "blabla",
+					Testcommitment: committedAmount,
+				}
+
+				result, err := json.Marshal(testStruct)
+				if err != nil {
+					t.Fatalf("Error is: %v", err)
+				}
+				var testStructAfterMarshalling TestStruct
+				err = json.Unmarshal(result, &testStructAfterMarshalling)
+				assert.NotNil(t, err)
+			} else {
+				committedAmountBytes, err := committedAmount.MarshalBinary()
+				if err != nil {
+					t.Fatalf("Error is: %v", err)
+				}
+
+				testStruct := TestStruct2{
+					Teststring:     "blabla",
+					Testcommitment: committedAmountBytes,
+				}
+				result, err := json.Marshal(testStruct)
+				if err != nil {
+					t.Fatalf("Error is: %v", err)
+				}
+				var testStructAfterMarshalling TestStruct2
+				err = json.Unmarshal(result, &testStructAfterMarshalling)
+				if err != nil {
+					t.Fatalf("Error is: %v", err)
+				}
+				var committedAmountAfterMarshalling ristretto.Point
+				err = committedAmountAfterMarshalling.UnmarshalBinary(testStructAfterMarshalling.Testcommitment)
+				if err != nil {
+					t.Fatalf("Error is: %v", err)
+				}
+
+				t.Log(committedAmountAfterMarshalling)
+
+			}
+			// HJSON, _ := H.MarshalBinary()
+			// stub.PutState(PEDERSEN_H_ID, HJSON)
+			// BindingFactorJSON, _ := bindingFactor.MarshalBinary()
+			// stub.PutState(PEDERSEN_BINDING_ID, BindingFactorJSON)
+			// committedAmountJSON, _ := committedAmount.MarshalBinary()
+
+			// //We need one set of calls per iteration
+			// stub.GetStateReturnsOnCall(i, HJSON, nil)
+			// stub.GetStateReturnsOnCall(i+1, BindingFactorJSON, nil)
+			// stub.GetStateReturnsOnCall(i+2, committedAmountJSON, nil)
+			// //***********************************************************************
+
+			// err := IsValidEncryption(ctx, testcase.wrongAmount, &committedAmount)
+			// if !testcase.isError {
+			// 	if err != nil {
+			// 		t.Fatalf("Error is: %v", err)
+			// 	}
+			// } else {
+			// 	assert.EqualError(t, err, testcase.errorString)
+			// }
+		})
+	}
 }
 
 func generateRandomCommitment(amount int64) (ristretto.Point, ristretto.Scalar, ristretto.Point) {
