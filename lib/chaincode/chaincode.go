@@ -20,6 +20,7 @@ const decimalsKey = "decimals"
 const totalSupplyKey = "totalSupply"
 const temporaryAccountAddressPrefix = "Staged"
 
+const TIMELOCK = 1000 //number of blocks we wait for the tx to be approved or rejected
 // Define objectType names for prefix
 // const allowancePrefix = "allowance"
 
@@ -240,7 +241,7 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 		return "", fmt.Errorf("failed to set event: %v", err)
 	}
 
-	err = storeTxInfo(stub, TxID, clientID, committedAmount)
+	err = storeTxInfo(stub, clientID, committedAmount)
 	if err != nil {
 		return "", fmt.Errorf("failed to store transaction info: %v", err)
 	}
@@ -277,12 +278,20 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
 
 	// Get Transaction Information
-	_, committedAmount, err := getTxInfo(stub, TxId)
+	_, committedAmount, proposalBlockNumber, isValid, err := getTxInfo(stub, TxId)
 	if err != nil {
 		return "", fmt.Errorf("failed to get transaction info: %v", err)
+	} else if !isValid {
+		return "", fmt.Errorf("the transaction is not valid anymore")
 	}
-	//
 
+	currentBlockNumber, err := GetBlockNumber(stub)
+	if err != nil {
+		return "", fmt.Errorf("failed to get the block number: %v", err)
+	}
+	if currentBlockNumber-proposalBlockNumber < TIMELOCK*BLOCK_GENERATION_TIME {
+		return "", fmt.Errorf("contract has expired")
+	}
 	// from address should be temporary account
 	err = transferHelper(ctx, temporaryAccountAddress, clientID, committedAmount)
 	if err != nil {
@@ -303,6 +312,7 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	return stub.GetTxID(), nil
 }
 
+// TODO: Reject seems to be called by sender. Check on docs
 func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId string) (string, error) {
 
 	// Check if contract has been intilized first
@@ -332,12 +342,22 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
 
 	// Get Transaction Information
-	sender, committedAmount, err := getTxInfo(stub, TxId)
+	sender, committedAmount, proposalBlockNumber, isValid, err := getTxInfo(stub, TxId)
 	if err != nil {
 		return "", fmt.Errorf("failed to get transaction info: %v", err)
+	} else if !isValid {
+		return "", fmt.Errorf("the transaction is not valid anymore")
+	}
+	//
+
+	currentBlockNumber, err := GetBlockNumber(stub)
+	if err != nil {
+		return "", fmt.Errorf("failed to get the block number: %v", err)
+	}
+	if currentBlockNumber-proposalBlockNumber < TIMELOCK*BLOCK_GENERATION_TIME {
+		return "", fmt.Errorf("contract has expired")
 	}
 
-	//
 	err = transferHelper(ctx, temporaryAccountAddress, sender, committedAmount)
 	if err != nil {
 		return "", fmt.Errorf("failed to transfer: %v", err)
@@ -349,12 +369,12 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
 	}
-	err = ctx.GetStub().SetEvent("Transfer", transferEventJSON)
+	err = stub.SetEvent("Transfer", transferEventJSON)
 	if err != nil {
 		return "", fmt.Errorf("failed to set event: %v", err)
 	}
 
-	return ctx.GetStub().GetTxID(), nil
+	return stub.GetTxID(), nil
 }
 
 // // BalanceOf returns the balance of the given account

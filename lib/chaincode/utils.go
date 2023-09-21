@@ -8,25 +8,37 @@ import (
 	"github.com/hyperledger/fabric-chaincode-go/shim"
 )
 
-type TxInformation struct {
-	Sender string
-	Amount []byte
-}
+const BLOCK_GENERATION_TIME = 10
 
-func createTxInfo(sender string, amount ristretto.Point) (TxInformation, error) {
+type TxInformation struct {
+	Sender              string
+	Amount              []byte
+	ProposalBlockNumber int64
+	isValid             bool //will be needed to avoid double spending, otherwise a recipient could approve several times within the time the contract exists.
+} //Since we are using a different temp address per each transaction, this won't happen anyway. Implementing this allows us to have a single temp account
+
+// TODO: use pointers, you MUST on stubs for example
+func createTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristretto.Point) (TxInformation, error) {
 	amountBytes, err := amount.MarshalBinary()
 	if err != nil {
 		return TxInformation{}, err
 	}
+	blockNumber, err := GetBlockNumber(stub)
+	if err != nil {
+		return TxInformation{}, err
+	}
+
 	txInfo := TxInformation{
-		Sender: sender,
-		Amount: amountBytes,
+		Sender:              sender,
+		Amount:              amountBytes,
+		ProposalBlockNumber: blockNumber,
+		isValid:             true,
 	}
 	return txInfo, nil
 }
 
-func storeTxInfo(stub shim.ChaincodeStubInterface, txId string, sender string, amount ristretto.Point) error {
-	txInfo, err := createTxInfo(sender, amount)
+func storeTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristretto.Point) error {
+	txInfo, err := createTxInfo(stub, sender, amount)
 	if err != nil {
 		return err
 	}
@@ -35,7 +47,7 @@ func storeTxInfo(stub shim.ChaincodeStubInterface, txId string, sender string, a
 	if err != nil {
 		return fmt.Errorf("failed to marshal: %v", err)
 	}
-
+	txId := stub.GetTxID()
 	err = stub.PutState(txId, transferDetailsBytes)
 	if err != nil {
 		return err
@@ -44,42 +56,37 @@ func storeTxInfo(stub shim.ChaincodeStubInterface, txId string, sender string, a
 	return nil
 }
 
-func getTxInfo(stub shim.ChaincodeStubInterface, TxId string) (string, ristretto.Point, error) {
+// TODO: better to return the whole struct and afterwards unmarshal the amount. In this way we can create a modifier to invalidate it
+func getTxInfo(stub shim.ChaincodeStubInterface, TxId string) (string, ristretto.Point, int64, bool, error) {
 	TxInfoBytes, err := stub.GetState(TxId)
 	if err != nil {
-		return "", ristretto.Point{}, fmt.Errorf("failed to read transaction information from world state: %v", err)
-	}
+		return "", ristretto.Point{}, 0, true, fmt.Errorf("failed to read transaction information from world state: %v", err)
+	} //TODO: may not be correct to return true if fails
 	var txInfo TxInformation
 	json.Unmarshal(TxInfoBytes, &txInfo)
 	if txInfo.Amount == nil {
-		return "", ristretto.Point{}, fmt.Errorf("temporary account has no balance")
+		return "", ristretto.Point{}, 0, true, fmt.Errorf("temporary account has no balance")
 	}
 	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
 	err = committedAmount.UnmarshalBinary(txInfo.Amount) //recipient should be clientId
 	if err != nil {
-		return "", ristretto.Point{}, fmt.Errorf("error unmarshalling")
+		return "", ristretto.Point{}, 0, true, fmt.Errorf("error unmarshalling")
 	}
-	return txInfo.Sender, committedAmount, nil
+	return txInfo.Sender, committedAmount, txInfo.ProposalBlockNumber, txInfo.isValid, nil
 }
 
-// func (TxInformation) Marshal() ([]byte, error) {
+func GetBlockNumber(stub shim.ChaincodeStubInterface) (int64, error) {
+	// Get the transaction timestamp
+	txTimestamp, err := stub.GetTxTimestamp()
+	if err != nil {
+		return 0, err
+	}
+	// Calculate the approximate block number
+	blockNumber := txTimestamp.GetSeconds() / BLOCK_GENERATION_TIME // Assuming 10 seconds per block
 
-// }
+	return blockNumber, nil
+}
 
-// func (TxInformation) Marshal([]byte, error) {
-// 	//we need to convert amount to bytes first due to behavious of ristretto points
-// 	amountBytes, err := TxInformation.Amount.MarshalBinary()
-// 	if err != nil {
-// 		t.Fatalf("Error is: %v", err)
-// 	}
-
-// 	testStruct := TestStruct2{
-// 		Teststring:     "blabla",
-// 		Testcommitment: committedAmountBytes,
-// 	}
-// 	result, err := json.Marshal(testStruct)
-// 	if err != nil {
-// 		t.Fatalf("Error is: %v", err)
-// 	}
-
-// }
+func (txInfo *TxInformation) InvalidateTx() {
+	txInfo.isValid = false
+}
