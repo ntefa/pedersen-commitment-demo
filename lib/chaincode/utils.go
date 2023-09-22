@@ -57,22 +57,22 @@ func storeTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristret
 }
 
 // TODO: better to return the whole struct and afterwards unmarshal the amount. In this way we can create a modifier to invalidate it
-func getTxInfo(stub shim.ChaincodeStubInterface, TxId string) (string, ristretto.Point, int64, bool, error) {
+func getTxInfo(stub shim.ChaincodeStubInterface, TxId string) (TxInformation, error) {
 	TxInfoBytes, err := stub.GetState(TxId)
 	if err != nil {
-		return "", ristretto.Point{}, 0, true, fmt.Errorf("failed to read transaction information from world state: %v", err)
+		return TxInformation{}, fmt.Errorf("failed to read transaction information from world state: %v", err)
 	} //TODO: may not be correct to return true if fails
 	var txInfo TxInformation
 	json.Unmarshal(TxInfoBytes, &txInfo)
 	if txInfo.Amount == nil {
-		return "", ristretto.Point{}, 0, true, fmt.Errorf("temporary account has no balance")
+		return TxInformation{}, fmt.Errorf("temporary account has no balance")
 	}
 	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
 	err = committedAmount.UnmarshalBinary(txInfo.Amount) //recipient should be clientId
 	if err != nil {
-		return "", ristretto.Point{}, 0, true, fmt.Errorf("error unmarshalling")
+		return TxInformation{}, fmt.Errorf("error unmarshalling")
 	}
-	return txInfo.Sender, committedAmount, txInfo.ProposalBlockNumber, txInfo.isValid, nil
+	return txInfo, nil
 }
 
 func GetBlockNumber(stub shim.ChaincodeStubInterface) (int64, error) {

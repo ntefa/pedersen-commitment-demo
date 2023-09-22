@@ -262,13 +262,6 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	}
 	stub := ctx.GetStub()
 
-	//TODO:
-	// Check validity of HashTimeLocked contract
-
-	//
-
-	//ctx.GetStub().GetQueryResult("")
-
 	// Get ID of submitting client identity
 	clientID, err := ctx.GetClientIdentity().GetID()
 	if err != nil {
@@ -278,10 +271,10 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
 
 	// Get Transaction Information
-	_, committedAmount, proposalBlockNumber, isValid, err := getTxInfo(stub, TxId)
+	txInfo, err := getTxInfo(stub, TxId)
 	if err != nil {
 		return "", fmt.Errorf("failed to get transaction info: %v", err)
-	} else if !isValid {
+	} else if !txInfo.isValid {
 		return "", fmt.Errorf("the transaction is not valid anymore")
 	}
 
@@ -289,8 +282,13 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	if err != nil {
 		return "", fmt.Errorf("failed to get the block number: %v", err)
 	}
-	if currentBlockNumber-proposalBlockNumber < TIMELOCK*BLOCK_GENERATION_TIME {
+	if currentBlockNumber-txInfo.ProposalBlockNumber < TIMELOCK*BLOCK_GENERATION_TIME {
 		return "", fmt.Errorf("contract has expired")
+	}
+	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
+	err = committedAmount.UnmarshalBinary(txInfo.Amount) //recipient should be clientId
+	if err != nil {
+		return "", fmt.Errorf("error unmarshalling")
 	}
 	// from address should be temporary account
 	err = transferHelper(ctx, temporaryAccountAddress, clientID, committedAmount)
@@ -326,13 +324,6 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 
 	stub := ctx.GetStub()
 
-	//TODO:
-	// Check validity of HashTimeLocked contract
-
-	//
-
-	//ctx.GetStub().GetQueryResult("")
-
 	// Get ID of submitting client identity
 	clientID, err := ctx.GetClientIdentity().GetID()
 	if err != nil {
@@ -342,10 +333,10 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 	temporaryAccountAddress := temporaryAccountAddressPrefix + "_" + TxId
 
 	// Get Transaction Information
-	sender, committedAmount, proposalBlockNumber, isValid, err := getTxInfo(stub, TxId)
+	txInfo, err := getTxInfo(stub, TxId)
 	if err != nil {
 		return "", fmt.Errorf("failed to get transaction info: %v", err)
-	} else if !isValid {
+	} else if !txInfo.isValid {
 		return "", fmt.Errorf("the transaction is not valid anymore")
 	}
 	//
@@ -354,11 +345,16 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 	if err != nil {
 		return "", fmt.Errorf("failed to get the block number: %v", err)
 	}
-	if currentBlockNumber-proposalBlockNumber < TIMELOCK*BLOCK_GENERATION_TIME {
+	if currentBlockNumber-txInfo.ProposalBlockNumber < TIMELOCK*BLOCK_GENERATION_TIME {
 		return "", fmt.Errorf("contract has expired")
 	}
+	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
+	err = committedAmount.UnmarshalBinary(txInfo.Amount) //recipient should be clientId
+	if err != nil {
+		return "", fmt.Errorf("error unmarshalling")
+	}
 
-	err = transferHelper(ctx, temporaryAccountAddress, sender, committedAmount)
+	err = transferHelper(ctx, temporaryAccountAddress, txInfo.Sender, committedAmount)
 	if err != nil {
 		return "", fmt.Errorf("failed to transfer: %v", err)
 	}
