@@ -11,7 +11,6 @@ import (
 const BLOCK_GENERATION_TIME = 10
 
 type TxInformation struct {
-	Sender              string
 	Amount              []byte
 	ProposalBlockNumber int64
 	isValid             bool //will be needed to avoid double spending, otherwise a recipient could approve several times within the time the contract exists.
@@ -29,7 +28,6 @@ func createTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristre
 	}
 
 	txInfo := TxInformation{
-		Sender:              sender,
 		Amount:              amountBytes,
 		ProposalBlockNumber: blockNumber,
 		isValid:             true,

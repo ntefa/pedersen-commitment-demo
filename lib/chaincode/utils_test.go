@@ -52,15 +52,13 @@ func TestCreateTxInfo(t *testing.T) {
 	// Call your function with the fake stub
 	sender := "sender"
 	amount := ristretto.Point{} // Replace with your desired amount
-	txInfo, err := createTxInfo(stub, sender, amount)
+	_, err := createTxInfo(stub, sender, amount)
 
 	// Custom assertions
 	if err != nil {
 		t.Errorf("createTxInfo error: %v", err)
 	}
-	if txInfo.Sender != sender {
-		t.Errorf("createTxInfo Sender: expected %s, got %s", sender, txInfo.Sender)
-	}
+
 	// Add more custom assertions as needed for other fields
 }
 
@@ -109,10 +107,8 @@ func TestGetTxInfo(t *testing.T) {
 	stub.GetTxTimestampReturns(expectedTimestamp, nil)
 
 	// Create a sample TxInformation struct and store it in the stub's state
-	sender := "sender"
 	amount := ristretto.Point{} // Replace with your desired amount
 	txInfo := TxInformation{
-		Sender:              sender,
 		Amount:              amount.Bytes(),
 		ProposalBlockNumber: 12345678, // Replace with your desired block number
 		isValid:             true,
@@ -122,14 +118,12 @@ func TestGetTxInfo(t *testing.T) {
 
 	// Call your function with the fake stub
 	txId := "tx123" // Replace with your desired transaction ID
-	resultTxInfo, err := getTxInfo(stub, txId)
+	_, err := getTxInfo(stub, txId)
 
 	// Custom assertions
 	if err != nil {
 		t.Errorf("getTxInfo error: %v", err)
 	}
-	if resultTxInfo.Sender != sender {
-		t.Errorf("getTxInfo Sender: expected %s, got %s", sender, resultTxInfo.Sender)
-	}
+
 	// Add more custom assertions as needed for other fields
 }

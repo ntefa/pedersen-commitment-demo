@@ -32,7 +32,19 @@ type SmartContract struct {
 }
 
 // event provides an organized struct for emitting events
-type event struct {
+type transferEvent struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Message string `json:"message"`
+}
+
+type approveEvent struct {
+	From    string `json:"from"`
+	To      string `json:"to"`
+	Message string `json:"message"`
+}
+
+type rejectEvent struct {
 	From    string `json:"from"`
 	To      string `json:"to"`
 	Message string `json:"message"`
@@ -158,7 +170,7 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, commit
 		return "", err
 	}
 	// Emit the Transfer event
-	transferEvent := event{"0x0", minter, "Token Mint"}
+	transferEvent := transferEvent{"0x0", minter, "Token Mint"}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
@@ -231,7 +243,7 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 	}
 
 	// Emit the Transfer event
-	transferEvent := event{clientID, recipient, "Money sent"}
+	transferEvent := transferEvent{clientID, recipient, "Money sent"}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
@@ -282,7 +294,7 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	if err != nil {
 		return "", fmt.Errorf("failed to get the block number: %v", err)
 	}
-	if currentBlockNumber-txInfo.ProposalBlockNumber < TIMELOCK*BLOCK_GENERATION_TIME {
+	if currentBlockNumber-txInfo.ProposalBlockNumber <= TIMELOCK*BLOCK_GENERATION_TIME {
 		return "", fmt.Errorf("contract has expired")
 	}
 	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
@@ -297,7 +309,7 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	}
 
 	// Emit the Transfer event
-	transferEvent := event{temporaryAccountAddress, clientID, "Money Sent"}
+	transferEvent := approveEvent{temporaryAccountAddress, clientID, "Contract approved!"}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
@@ -310,7 +322,7 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	return stub.GetTxID(), nil
 }
 
-// TODO: Reject seems to be called by sender. Check on docs
+// TODO: Reject seems to be called by sender. Check on docs. UPDATE : YES IT IS -> so we do not need to store sender and recipient in blockchain!
 func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId string) (string, error) {
 
 	// Check if contract has been intilized first
@@ -345,8 +357,8 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 	if err != nil {
 		return "", fmt.Errorf("failed to get the block number: %v", err)
 	}
-	if currentBlockNumber-txInfo.ProposalBlockNumber < TIMELOCK*BLOCK_GENERATION_TIME {
-		return "", fmt.Errorf("contract has expired")
+	if currentBlockNumber-txInfo.ProposalBlockNumber > TIMELOCK*BLOCK_GENERATION_TIME {
+		return "", fmt.Errorf("contract has not expired")
 	}
 	var committedAmount ristretto.Point                  //variable to store the current committed balance of sender
 	err = committedAmount.UnmarshalBinary(txInfo.Amount) //recipient should be clientId
@@ -354,13 +366,13 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 		return "", fmt.Errorf("error unmarshalling")
 	}
 
-	err = transferHelper(ctx, temporaryAccountAddress, txInfo.Sender, committedAmount)
+	err = transferHelper(ctx, temporaryAccountAddress, clientID, committedAmount)
 	if err != nil {
 		return "", fmt.Errorf("failed to transfer: %v", err)
 	}
 
 	// Emit the Transfer event
-	transferEvent := event{temporaryAccountAddress, clientID, "Money sent!"} //TODO: need to create custom events for reject and receipt
+	transferEvent := rejectEvent{temporaryAccountAddress, clientID, "Money sent!"} //TODO: need to create custom events for reject and receipt
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)
@@ -373,6 +385,7 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 	return stub.GetTxID(), nil
 }
 
+//TODO: return balanceof needed to know committed amount in blockchain -> probably in utils, used for testing
 // // BalanceOf returns the balance of the given account
 // func (s *SmartContract) BalanceOf(ctx contractapi.TransactionContextInterface, account string) (int, error) {
 
@@ -793,10 +806,6 @@ func transferHelper(ctx contractapi.TransactionContextInterface, from string, to
 	if err != nil {
 		return err
 	}
-
-	//TODO: check if there is Txid -> check hlf docs where I retrieve the code.
-	// TxID needed to run the select query -> select blocknumber from state where key = txid / select max block number
-	// GetTXId method
 
 	log.Printf("client %s balance updated from %d to %d", from, fromCurrentBalance, updatedFromBalance)
 	log.Printf("recipient %s balance updated from %d to %d", to, toCurrentBalance, updatedToBalance)
