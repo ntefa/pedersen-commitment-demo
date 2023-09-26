@@ -14,7 +14,7 @@ import (
 )
 
 // Define key names for options
-const nameKey = "name"
+const nameKey = "PEDERSEN_CHAINCODE_KEY"
 const symbolKey = "symbol"
 const decimalsKey = "decimals"
 const totalSupplyKey = "totalSupply"
@@ -61,7 +61,7 @@ type TransferDetails struct {
 // This function triggers a Transfer event
 func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, committedAmount ristretto.Point) (string, error) {
 
-	// Check if contract has been intilized first
+	// Check if contract has been initialized first
 	initialized, err := checkInitialized(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to check if contract is already initialized: %v", err)
@@ -844,17 +844,4 @@ func checkInitialized(ctx contractapi.TransactionContextInterface) (bool, error)
 	}
 
 	return true, nil
-}
-
-// sub two number checking for overflow
-func sub(b int, q int) (int, error) {
-
-	// Check overflow
-	diff := b - q
-
-	if (diff > b) == (b >= 0 && q >= 0) {
-		return 0, fmt.Errorf("math: Subtraction overflow occurred  %d - %d", b, q)
-	}
-
-	return diff, nil
 }

@@ -68,7 +68,6 @@ func storeTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristret
 	return nil
 }
 
-// TODO: better to return the whole struct and afterwards unmarshal the amount. In this way we can create a modifier to invalidate it
 func getTxInfo(stub shim.ChaincodeStubInterface, TxId string) (TxInformation, error) {
 	TxInfoBytes, err := stub.GetState(TxId)
 	if err != nil {
