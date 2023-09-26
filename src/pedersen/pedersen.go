@@ -1,7 +1,6 @@
 package pedersen
 
 import (
-	"fmt"
 	"math/big"
 
 	"github.com/bwesterb/go-ristretto"
@@ -97,8 +96,7 @@ func Validate(x int64, committedAmount ristretto.Point, H ristretto.Point, rX ri
 	value := big.NewInt(x)
 
 	committedValue := CommitTo(&H, &rX, vX.SetBigInt(value))
-	fmt.Println(committedAmount)
-	fmt.Println(committedValue)
+
 	if committedAmount.Equals(&committedValue) {
 		return true
 	} else {

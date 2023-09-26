@@ -1,7 +1,7 @@
 package chaincode
 
 import (
-	"fmt"
+	"encoding/json"
 	"math/big"
 	"pedersen-commitment-transfer/lib/tests/testsfakes"
 	"pedersen-commitment-transfer/src/pedersen"
@@ -34,6 +34,20 @@ var _TestEncryption = []struct {
 	},
 }
 
+var _TestRistrettoMarshalling = []struct {
+	name    string
+	isError bool
+}{
+	{
+		name:    "OK",
+		isError: false,
+	},
+	{
+		name:    "Invalid encryption",
+		isError: true,
+	},
+}
+
 func TestInitPedersen(t *testing.T) {
 	ctx := &testsfakes.FakeTestTransactionContextInterface{}
 	stub := &testsfakes.FakeTestChaincodeStubInterface{}
@@ -43,26 +57,43 @@ func TestInitPedersen(t *testing.T) {
 	stub.GetTxIDStub = func() string {
 		return "TxidTest"
 	}
-	H, bindingFactor, _ := generateRandomCommitment(100)
+	H, bindingFactor, _ := generateRandomCommitment(0)
 
 	InitPedersen(ctx, H, bindingFactor)
 
+	//Prepare expected values
+	var vX ristretto.Scalar
+
+	zero := big.NewInt(0)
+
+	zeroCommitted := pedersen.CommitTo(&H, &bindingFactor, vX.SetBigInt(zero))
+
 	//Let's check that putstate was called correctly.
-	_, HJSON := stub.PutStateArgsForCall(0)
-	var H_Test ristretto.Point
-	H_Test.UnmarshalBinary(HJSON)
+	_, initPedersenPut := stub.PutStateArgsForCall(0)
 
-	if !H_Test.Equals(&H) {
+	var pedersenVariables_got PedersenVariables
+	json.Unmarshal(initPedersenPut, &pedersenVariables_got)
+
+	var H_got ristretto.Point
+	var bindingFactor_got ristretto.Scalar
+	var zeroPedersen_got ristretto.Point
+
+	H_got.UnmarshalBinary(pedersenVariables_got.H_bytes)
+	bindingFactor_got.UnmarshalBinary(pedersenVariables_got.BindingFactor_bytes)
+	zeroPedersen_got.UnmarshalBinary(pedersenVariables_got.ZeroCommitted_bytes)
+
+	if !H_got.Equals(&H) {
 		t.Fatal("Error")
 	}
 
-	_, BindingFactorJSON := stub.PutStateArgsForCall(1)
-	var bindingFactor_Test ristretto.Scalar
-	bindingFactor_Test.UnmarshalBinary(BindingFactorJSON)
-
-	if !bindingFactor_Test.Equals(&bindingFactor) {
+	if !zeroPedersen_got.Equals(&zeroCommitted) {
 		t.Fatal("Error")
 	}
+
+	if !bindingFactor_got.Equals(&bindingFactor) {
+		t.Fatalf("Error: expected %v, got %v", bindingFactor, bindingFactor_got)
+	}
+
 }
 
 func TestGetPedersenParams(t *testing.T) {
@@ -74,20 +105,23 @@ func TestGetPedersenParams(t *testing.T) {
 	stub.GetTxIDStub = func() string {
 		return "TxidTest"
 	}
-	H, bindingFactor, zeroPedersen := generateRandomCommitment(100)
+	H, bindingFactor, zeroPedersen := generateRandomCommitment(0)
 	HJSON, _ := H.MarshalBinary()
-	stub.PutState(PEDERSEN_H_ID, HJSON)
 	BindingFactorJSON, _ := bindingFactor.MarshalBinary()
-	stub.PutState(PEDERSEN_BINDING_ID, BindingFactorJSON)
 	ZeroPedersenJSON, _ := zeroPedersen.MarshalBinary()
-	stub.GetStateReturnsOnCall(0, HJSON, nil)
-	stub.GetStateReturnsOnCall(1, BindingFactorJSON, nil)
-	stub.GetStateReturnsOnCall(2, ZeroPedersenJSON, nil)
+	pedersenVariables := createPedersenVariables(HJSON, BindingFactorJSON, ZeroPedersenJSON)
+	pedersenVariablesJson, _ := json.Marshal(pedersenVariables)
+	stub.PutState(PEDERSEN_ID, pedersenVariablesJson)
+
+	stub.GetStateReturnsOnCall(0, pedersenVariablesJson, nil)
 
 	var H2, zeroPedersen2 *ristretto.Point
 	var bindingFactor2 *ristretto.Scalar
-	H2, bindingFactor2, zeroPedersen2, _ = GetPedersenParams(ctx)
+	H2, bindingFactor2, zeroPedersen2, err := GetPedersenParams(ctx)
 
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !H2.Equals(&H) {
 		t.Fatal("Error")
 	}
@@ -97,12 +131,8 @@ func TestGetPedersenParams(t *testing.T) {
 	}
 
 	if !bindingFactor2.Equals(&bindingFactor) {
-		t.Fatal("Error")
+		t.Fatalf("Error: expected %v, got %v", bindingFactor, bindingFactor2)
 	}
-
-	var htest ristretto.Point
-	htest.UnmarshalBinary(nil)
-	fmt.Println(htest)
 
 }
 
@@ -121,16 +151,12 @@ func TestIsValidEncryption(t *testing.T) {
 			//It uses GetPedersenParams under the hood, hence similar mocking methods.
 			H, bindingFactor, committedAmount := generateRandomCommitment(testcase.amount)
 			HJSON, _ := H.MarshalBinary()
-			stub.PutState(PEDERSEN_H_ID, HJSON)
 			BindingFactorJSON, _ := bindingFactor.MarshalBinary()
-			stub.PutState(PEDERSEN_BINDING_ID, BindingFactorJSON)
 			committedAmountJSON, _ := committedAmount.MarshalBinary()
+			pedersenVariables := createPedersenVariables(HJSON, BindingFactorJSON, committedAmountJSON)
+			pedersenVariablesJson, _ := json.Marshal(pedersenVariables)
 
-			//We need one set of calls per iteration
-			stub.GetStateReturnsOnCall(i, HJSON, nil)
-			stub.GetStateReturnsOnCall(i+1, BindingFactorJSON, nil)
-			stub.GetStateReturnsOnCall(i+2, committedAmountJSON, nil)
-			//***********************************************************************
+			stub.GetStateReturnsOnCall(i, pedersenVariablesJson, nil)
 
 			err := IsValidEncryption(ctx, testcase.wrongAmount, &committedAmount)
 			if !testcase.isError {
@@ -142,7 +168,6 @@ func TestIsValidEncryption(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func generateRandomCommitment(amount int64) (ristretto.Point, ristretto.Scalar, ristretto.Point) {

@@ -1,6 +1,7 @@
 package chaincode
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"pedersen-commitment-transfer/src/pedersen"
@@ -9,19 +10,20 @@ import (
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 )
 
+const PEDERSEN_ID = "PEDERSEN"
 const PEDERSEN_H_ID = "PEDERSEN_H"
 const PEDERSEN_BINDING_ID = "PEDERSEN_BINDING"
 const PEDERSEN_ZERO_ID = "PEDERSEN_ZERO"
 
 func IsValidEncryption(ctx contractapi.TransactionContextInterface, x int64, committedAmount *ristretto.Point) error {
 
+	//Fetch pedersen parameters from state
 	H, bindingFactor, _, err := GetPedersenParams(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch pedersen encryption parameters: %v", err)
 	}
 
 	isValid := pedersen.Validate(x, *committedAmount, *H, *bindingFactor)
-	fmt.Println(isValid)
 	if !isValid {
 		return fmt.Errorf("encryption not valid")
 	}
@@ -52,17 +54,13 @@ func InitPedersen(ctx contractapi.TransactionContextInterface, H ristretto.Point
 		return err
 	}
 
-	err = ctx.GetStub().PutState(PEDERSEN_H_ID, HJSON)
+	pedersenVariables := createPedersenVariables(HJSON, BindingFactorJSON, ZeroPedersenJSON)
+	pedersenVariablesJSON, err := json.Marshal(pedersenVariables)
 	if err != nil {
-		return fmt.Errorf("failed to put to world state. %v", err)
+		return err
 	}
 
-	err = ctx.GetStub().PutState(PEDERSEN_BINDING_ID, BindingFactorJSON)
-	if err != nil {
-		return fmt.Errorf("failed to put to world state. %v", err)
-	}
-
-	err = ctx.GetStub().PutState(PEDERSEN_ZERO_ID, ZeroPedersenJSON)
+	err = ctx.GetStub().PutState(PEDERSEN_ID, pedersenVariablesJSON)
 	if err != nil {
 		return fmt.Errorf("failed to put to world state. %v", err)
 	}
@@ -72,55 +70,63 @@ func InitPedersen(ctx contractapi.TransactionContextInterface, H ristretto.Point
 
 // ReadAsset returns the asset stored in the world state with given id.
 func GetPedersenParams(ctx contractapi.TransactionContextInterface) (*ristretto.Point, *ristretto.Scalar, *ristretto.Point, error) {
-
-	HJSON, err := ctx.GetStub().GetState(PEDERSEN_H_ID)
+	pedersenVariablesJson, err := ctx.GetStub().GetState(PEDERSEN_ID)
 	if err != nil {
 		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
 	}
-
-	BindingFactorJSON, err := ctx.GetStub().GetState(PEDERSEN_BINDING_ID)
+	var pedersenVariables PedersenVariables
+	err = json.Unmarshal(pedersenVariablesJson, &pedersenVariables)
 	if err != nil {
-		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
+		fmt.Errorf("failed to unmarshal")
 	}
 
-	ZeroPedersenJSON, err := ctx.GetStub().GetState(PEDERSEN_ZERO_ID)
-	if err != nil {
-		return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
-	}
+	// HJSON, err := ctx.GetStub().GetState(PEDERSEN_H_ID)
+	// if err != nil {
+	// 	return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
+	// }
+	// BindingFactorJSON, err := ctx.GetStub().GetState(PEDERSEN_BINDING_ID)
+	// if err != nil {
+	// 	return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
+	// }
+
+	// ZeroPedersenJSON, err := ctx.GetStub().GetState(PEDERSEN_ZERO_ID)
+	// if err != nil {
+	// 	return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to read from world state: %v", err)
+	// }
 
 	var H, zeroPedersen ristretto.Point
 	var bindingFactor ristretto.Scalar
 
 	//This case should not happen, param is passed in input to Init
-	if HJSON == nil {
+	if pedersenVariables.H_bytes == nil {
 		H = ristretto.Point{}
 		err = nil
 	} else {
-		err = H.UnmarshalBinary(HJSON)
+		err = H.UnmarshalBinary(pedersenVariables.H_bytes)
 		if err != nil {
-			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal H : %v", err)
+			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to unmarshal H : %v", err)
 		}
 	}
 
 	//This case should not happen, param is passed in input to Init
-	if BindingFactorJSON == nil {
+	if pedersenVariables.BindingFactor_bytes == nil {
 		bindingFactor = ristretto.Scalar{}
 		err = nil
 	} else {
-		err = bindingFactor.UnmarshalBinary(BindingFactorJSON)
+		err = bindingFactor.UnmarshalBinary(pedersenVariables.BindingFactor_bytes)
 		if err != nil {
-			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal the Binding Factor : %v", err)
+			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to unmarshal the Binding Factor : %v", err)
 		}
 	}
 
 	//This case should not happen, param is passed in input to Init
-	if ZeroPedersenJSON == nil {
+	if pedersenVariables.ZeroCommitted_bytes == nil {
 		zeroPedersen = ristretto.Point{}
 		err = nil
 	} else {
-		err = zeroPedersen.UnmarshalBinary(ZeroPedersenJSON)
+		err = zeroPedersen.UnmarshalBinary(pedersenVariables.ZeroCommitted_bytes)
 		if err != nil {
-			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("Failed to unmarshal the vale for the committed zero : %v", err)
+			return &ristretto.Point{}, &ristretto.Scalar{}, &ristretto.Point{}, fmt.Errorf("failed to unmarshal the vale for the committed zero : %v", err)
 		}
 	}
 
