@@ -189,7 +189,7 @@ func (s *SmartContract) Mint(ctx contractapi.TransactionContextInterface, commit
 // Transfer transfers tokens from client account to recipient account
 // recipient account must be a valid clientID as returned by the ClientID() function
 // This function triggers a Transfer event
-func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, committedAmount ristretto.Point, currentBalance int64) (string, error) {
+func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, committedAmount ristretto.Point) (string, error) {
 	stub := ctx.GetStub()
 	//ContractAPI doesn't support transient map....
 	//We must use transient map so that private key is not revealed
@@ -202,11 +202,18 @@ func (s *SmartContract) Transfer(ctx contractapi.TransactionContextInterface, co
 		return "", errors.New("key not found")
 	}
 
+	transientCurrentBalance, ok := tr["balance"]
+	if !ok {
+		return "", errors.New("key not found")
+	}
+
 	//Convert transient data from bytes to int64
 	var amount int64
+	var currentBalance int64
 	binary.BigEndian.PutUint64(transientAmount, uint64(amount))
+	binary.BigEndian.PutUint64(transientCurrentBalance, uint64(currentBalance))
 
-	if amount > currentBalance { //TODO: currentbalance as transient ? Probaly
+	if amount > currentBalance {
 		return "", fmt.Errorf("you cannot send less than 0")
 	}
 	if amount > currentBalance {
@@ -322,7 +329,6 @@ func (s *SmartContract) Approve(ctx contractapi.TransactionContextInterface, TxI
 	return stub.GetTxID(), nil
 }
 
-// TODO: Reject seems to be called by sender. Check on docs. UPDATE : YES IT IS -> so we do not need to store sender and recipient in blockchain!
 func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId string) (string, error) {
 
 	// Check if contract has been intilized first
@@ -372,7 +378,7 @@ func (s *SmartContract) Reject(ctx contractapi.TransactionContextInterface, TxId
 	}
 
 	// Emit the Transfer event
-	transferEvent := rejectEvent{temporaryAccountAddress, clientID, "Money sent!"} //TODO: need to create custom events for reject and receipt
+	transferEvent := rejectEvent{temporaryAccountAddress, clientID, "Contract rejected!"}
 	transferEventJSON, err := json.Marshal(transferEvent)
 	if err != nil {
 		return "", fmt.Errorf("failed to obtain JSON encoding: %v", err)

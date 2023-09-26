@@ -10,6 +10,20 @@ import (
 
 const BLOCK_GENERATION_TIME = 10
 
+type PedersenVariables struct {
+	H_bytes             []byte
+	BindingFactor_bytes []byte
+	ZeroCommitted_bytes []byte
+}
+
+func createPedersenVariables(H, BindingFactor, ZeroCommitted []byte) PedersenVariables {
+	return PedersenVariables{
+		H_bytes:             H,
+		BindingFactor_bytes: BindingFactor,
+		ZeroCommitted_bytes: ZeroCommitted,
+	}
+}
+
 type TxInformation struct {
 	Amount              []byte
 	ProposalBlockNumber int64
@@ -17,14 +31,14 @@ type TxInformation struct {
 } //Since we are using a different temp address per each transaction, this won't happen anyway. Implementing this allows us to have a single temp account
 
 // TODO: use pointers, you MUST on stubs for example
-func createTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristretto.Point) (TxInformation, error) {
+func createTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristretto.Point) (*TxInformation, error) {
 	amountBytes, err := amount.MarshalBinary()
 	if err != nil {
-		return TxInformation{}, err
+		return &TxInformation{}, err
 	}
 	blockNumber, err := GetBlockNumber(stub)
 	if err != nil {
-		return TxInformation{}, err
+		return &TxInformation{}, err
 	}
 
 	txInfo := TxInformation{
@@ -32,7 +46,7 @@ func createTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristre
 		ProposalBlockNumber: blockNumber,
 		isValid:             true,
 	}
-	return txInfo, nil
+	return &txInfo, nil
 }
 
 func storeTxInfo(stub shim.ChaincodeStubInterface, sender string, amount ristretto.Point) error {
